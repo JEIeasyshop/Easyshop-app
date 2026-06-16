@@ -21,6 +21,12 @@ export async function signOut() {
   if (error) throw error;
 }
 
+// Returns 'owner' or 'admin' from the current session's user metadata.
+// Defaults to 'admin' (least privilege) if role is not set.
+export function getUserRole(session) {
+  return session?.user?.user_metadata?.role || 'admin';
+}
+
 // Subscribe to auth state changes (login/logout). Returns an
 // unsubscribe function.
 export function onAuthStateChange(callback) {
@@ -29,4 +35,5 @@ export function onAuthStateChange(callback) {
   });
   return () => subscription.unsubscribe();
 }
+
 
