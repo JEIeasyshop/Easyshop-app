@@ -1,12 +1,12 @@
 # dependencies
 node_modules/
 
-# env files — never commit real keys to GitHub
+# env — never commit real keys
 .env
 .env.local
 
 # build output
-build/
+dist/
 
 # misc
 .DS_Store

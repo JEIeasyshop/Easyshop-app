@@ -1,164 +1,158 @@
-// components/TrackingTab.jsx
-import { useState } from 'react';
-import { getStageLabel, getStageSequence } from '../lib/data';
+// src/components/TrackingTab.jsx
+import { useState } from 'react'
+import { Truck, ChevronRight, Check, ExternalLink } from 'lucide-react'
+import { getStageLabel, getStageSequence } from '../lib/data'
 
 export default function TrackingTab({ orders, tracking, carriers, updateTracking, advanceStage }) {
-  const [editingId, setEditingId]   = useState(null);
-  const [trackingNum, setTrackingNum] = useState('');
-  const [carrierId, setCarrierId]   = useState('');
-  const [advancing, setAdvancing]   = useState(null);
+  const [editId, setEditId]       = useState(null)
+  const [tNum, setTNum]           = useState('')
+  const [cId, setCId]             = useState('')
+  const [advancing, setAdvancing] = useState(null)
 
-  const getTracking = (orderId) => tracking.find(t => t.order_id === orderId);
-  const getCarrier  = (cid) => carriers.find(c => c.id === cid);
+  const getT   = (oid) => tracking.find(t => t.order_id === oid)
+  const getCar = (cid) => carriers.find(c => c.id === cid)
 
-  const buildTrackingUrl = (carrier, number) => {
-    if (!carrier || !number) return null;
-    return carrier.tracking_url_template.replace('{tracking_number}', encodeURIComponent(number));
-  };
+  const trackUrl = (carrier, num) => {
+    if (!carrier || !num) return null
+    return carrier.tracking_url_template.replace('{tracking_number}', encodeURIComponent(num))
+  }
 
-  const handleSaveTracking = async (orderId) => {
-    await updateTracking(orderId, {
-      tracking_number: trackingNum,
-      carrier_id: carrierId || null,
-    });
-    setEditingId(null);
-  };
+  const saveTracking = async (orderId) => {
+    await updateTracking(orderId, { tracking_number: tNum || null, carrier_id: cId || null })
+    setEditId(null)
+  }
 
-  const handleAdvance = async (order, currentStage) => {
-    const seq = getStageSequence(order.service_type);
-    const idx = seq.indexOf(currentStage);
-    if (idx === -1 || idx === seq.length - 1) return;
-    const next = seq[idx + 1];
-    setAdvancing(order.id);
-    try {
-      await advanceStage(order.id, next);
-    } finally {
-      setAdvancing(null);
-    }
-  };
+  const advance = async (order, stage) => {
+    const seq = getStageSequence(order.service_type)
+    const idx = seq.indexOf(stage)
+    if (idx === -1 || idx === seq.length - 1) return
+    setAdvancing(order.id)
+    try { await advanceStage(order.id, seq[idx + 1]) }
+    finally { setAdvancing(null) }
+  }
 
   return (
     <div>
-      <div style={{marginBottom:20}}>
-        <h2 style={{fontSize:18, fontWeight:700, color:'var(--navy)'}}>Tracking</h2>
-        <p className="text-muted text-small" style={{marginTop:2}}>Update shipment stages and track packages</p>
+      <div className="page-header">
+        <h2>Tracking</h2>
+        <p>Advance shipment stages and manage tracking numbers</p>
       </div>
 
       {orders.length === 0 ? (
         <div className="card">
           <div className="empty-state">
-            <div className="empty-icon">🚚</div>
+            <div className="empty-icon"><Truck size={26} /></div>
             <h3>No shipments to track</h3>
             <p>Orders will appear here once created.</p>
           </div>
         </div>
       ) : (
-        <div style={{display:'flex', flexDirection:'column', gap:16}}>
+        <div style={{display:'flex', flexDirection:'column', gap:14}}>
           {orders.map(order => {
-            const t = getTracking(order.id);
-            if (!t) return null;
-            const seq      = getStageSequence(order.service_type);
-            const stage    = t.current_stage;
-            const carrier  = getCarrier(t.carrier_id);
-            const trackUrl = buildTrackingUrl(carrier, t.tracking_number);
-            const isLast   = seq.indexOf(stage) === seq.length - 1;
-            const isEditing = editingId === order.id;
+            const t       = getT(order.id)
+            if (!t) return null
+            const seq     = getStageSequence(order.service_type)
+            const stage   = t.current_stage
+            const carrier = getCar(t.carrier_id)
+            const url     = trackUrl(carrier, t.tracking_number)
+            const isLast  = seq.indexOf(stage) === seq.length - 1
+            const isEdit  = editId === order.id
 
             return (
               <div className="card" key={order.id}>
                 <div className="card-header">
-                  <div>
-                    <span style={{fontWeight:700, color:'var(--navy)'}}>{order.customer_name}</span>
-                    <span className="text-muted text-small" style={{marginLeft:10}}>
+                  <div className="flex-center gap-12">
+                    <span className="fw-700 text-navy font-brand" style={{fontSize:15}}>{order.customer_name}</span>
+                    <span className="text-sm text-muted">
                       {new Date(order.order_date).toLocaleDateString('en-GB',{day:'2-digit',month:'short'})}
                     </span>
-                    <span className="badge badge-gray" style={{marginLeft:8}}>
+                    <span className={`badge ${order.service_type === 'full_service' ? 'badge-navy' : 'badge-gray'}`}>
                       {order.service_type === 'full_service' ? 'Full Service' : 'Shipping Only'}
                     </span>
                   </div>
-                  <div className="flex gap-8">
-                    {!isLast && (
-                      <button className="btn btn-gold btn-sm"
-                        disabled={advancing === order.id}
-                        onClick={() => handleAdvance(order, stage)}>
-                        {advancing === order.id ? '...' : 'Advance Stage →'}
-                      </button>
-                    )}
-                    {isLast && <span className="badge badge-green">✓ Delivered</span>}
+                  <div className="flex-center gap-8">
+                    {isLast
+                      ? <span className="badge badge-green"><Check size={11} style={{marginRight:3}} />Delivered</span>
+                      : <button className="btn btn-gold btn-sm" disabled={advancing === order.id}
+                          onClick={() => advance(order, stage)}>
+                          {advancing === order.id ? '…' : <><ChevronRight size={13} /> Advance Stage</>}
+                        </button>
+                    }
                   </div>
                 </div>
 
                 <div className="card-body">
                   {/* Stage tracker */}
-                  <div className="stage-tracker" style={{marginBottom:20}}>
-                    {seq.map((s) => {
-                      const isDone   = stage > s;
-                      const isActive = stage === s;
+                  <div className="stage-track" style={{marginBottom:22}}>
+                    {seq.map(s => {
+                      const done   = stage > s
+                      const active = stage === s
                       return (
-                        <div key={s} className={`stage-item ${isDone ? 'done' : ''}`}>
-                          <div className={`stage-dot ${isDone ? 'done' : isActive ? 'active' : ''}`}>
-                            {isDone ? '✓' : s}
+                        <div key={s} className={`stage-item ${done ? 'done' : ''}`}>
+                          <div className={`stage-dot ${done ? 'done' : active ? 'active' : ''}`}>
+                            {done ? <Check size={10} /> : s}
                           </div>
-                          <div className={`stage-label ${isDone ? 'done' : isActive ? 'active' : ''}`}>
+                          <div className={`stage-lbl ${done ? 'done' : active ? 'active' : ''}`}>
                             {getStageLabel(order.service_type, s)}
                           </div>
                         </div>
-                      );
+                      )
                     })}
                   </div>
 
-                  {/* Tracking number row */}
-                  {isEditing ? (
-                    <div style={{display:'flex', gap:8, alignItems:'flex-end', flexWrap:'wrap'}}>
-                      <div style={{flex:1, minWidth:140}}>
+                  {/* Tracking number */}
+                  {isEdit ? (
+                    <div style={{display:'flex', gap:8, flexWrap:'wrap', alignItems:'flex-end'}}>
+                      <div style={{flex:1, minWidth:130}}>
                         <div className="form-label" style={{marginBottom:4}}>Carrier</div>
-                        <select className="form-select" value={carrierId}
-                          onChange={e => setCarrierId(e.target.value)}>
-                          <option value="">— Select carrier —</option>
+                        <select className="form-select" value={cId} onChange={e => setCId(e.target.value)}>
+                          <option value="">— Select —</option>
                           {carriers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                         </select>
                       </div>
-                      <div style={{flex:2, minWidth:180}}>
+                      <div style={{flex:2, minWidth:160}}>
                         <div className="form-label" style={{marginBottom:4}}>Tracking Number</div>
                         <input className="form-input" type="text" placeholder="e.g. 1Z999AA10123456784"
-                          value={trackingNum} onChange={e => setTrackingNum(e.target.value)} />
+                          value={tNum} onChange={e => setTNum(e.target.value)} />
                       </div>
-                      <button className="btn btn-primary btn-sm" onClick={() => handleSaveTracking(order.id)}>Save</button>
-                      <button className="btn btn-outline btn-sm" onClick={() => setEditingId(null)}>Cancel</button>
+                      <button className="btn btn-primary btn-sm" onClick={() => saveTracking(order.id)}>Save</button>
+                      <button className="btn btn-outline btn-sm" onClick={() => setEditId(null)}>Cancel</button>
                     </div>
                   ) : (
                     <div className="flex-between">
                       <div>
                         {t.tracking_number ? (
-                          <div>
-                            <span className="text-muted text-small" style={{marginRight:6}}>{carrier?.name || 'Carrier'}:</span>
-                            {trackUrl
-                              ? <a href={trackUrl} target="_blank" rel="noreferrer" className="tracking-link">{t.tracking_number}</a>
-                              : <span className="tracking-link">{t.tracking_number}</span>
+                          <span className="flex-center gap-6">
+                            <span className="text-sm text-muted">{carrier?.name || 'Carrier'}:</span>
+                            {url
+                              ? <a href={url} target="_blank" rel="noreferrer"
+                                  className="tracking-num flex-center gap-6">
+                                  {t.tracking_number} <ExternalLink size={11} />
+                                </a>
+                              : <span className="tracking-num">{t.tracking_number}</span>
                             }
-                          </div>
+                          </span>
                         ) : (
-                          <span className="text-muted text-small">No tracking number yet</span>
+                          <span className="text-sm text-muted">No tracking number added yet</span>
                         )}
                       </div>
                       <button className="btn btn-outline btn-sm"
-                        onClick={() => {
-                          setEditingId(order.id);
-                          setTrackingNum(t.tracking_number || '');
-                          setCarrierId(t.carrier_id || '');
-                        }}>
+                        onClick={() => { setEditId(order.id); setTNum(t.tracking_number || ''); setCId(t.carrier_id || '') }}>
                         {t.tracking_number ? 'Edit' : '+ Add Tracking'}
                       </button>
                     </div>
                   )}
 
-                  {/* Stage history */}
-                  {t.stage_history?.length > 0 && (
+                  {/* History */}
+                  {t.stage_history?.length > 1 && (
                     <div style={{marginTop:16}}>
-                      <div className="text-small text-muted" style={{marginBottom:6, fontWeight:600}}>History</div>
+                      <div className="text-sm text-muted fw-700" style={{marginBottom:6}}>Stage History</div>
                       {[...t.stage_history].reverse().map((h, i) => (
-                        <div key={i} className="text-small" style={{display:'flex', gap:12, padding:'4px 0', borderBottom:'1px solid var(--gray-100)'}}>
-                          <span className="text-muted">{new Date(h.timestamp).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}</span>
+                        <div key={i} className="flex-center gap-12 text-sm"
+                          style={{padding:'5px 0', borderBottom:'1px solid var(--gray-100)'}}>
+                          <span className="text-muted text-mono" style={{minWidth:120}}>
+                            {new Date(h.timestamp).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}
+                          </span>
                           <span>{getStageLabel(order.service_type, h.stage)}</span>
                           {h.note && <span className="text-muted">— {h.note}</span>}
                         </div>
@@ -167,10 +161,10 @@ export default function TrackingTab({ orders, tracking, carriers, updateTracking
                   )}
                 </div>
               </div>
-            );
+            )
           })}
         </div>
       )}
     </div>
-  );
+  )
 }

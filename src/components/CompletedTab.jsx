@@ -1,22 +1,20 @@
-// components/CompletedTab.jsx
+// src/components/CompletedTab.jsx
+import { Archive } from 'lucide-react'
 
 export default function CompletedTab({ completedOrders }) {
-  const daysLeft = (autoDelete) => {
-    const diff = new Date(autoDelete) - new Date();
-    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
-  };
+  const daysLeft = (d) => Math.max(0, Math.ceil((new Date(d) - new Date()) / 86400000))
 
   return (
     <div>
-      <div style={{marginBottom:20}}>
-        <h2 style={{fontSize:18, fontWeight:700, color:'var(--navy)'}}>Completed</h2>
-        <p className="text-muted text-small" style={{marginTop:2}}>Records kept for 14 days then automatically deleted</p>
+      <div className="page-header">
+        <h2>Completed</h2>
+        <p>Records are kept for 14 days then automatically removed</p>
       </div>
 
       {completedOrders.length === 0 ? (
         <div className="card">
           <div className="empty-state">
-            <div className="empty-icon">✅</div>
+            <div className="empty-icon"><Archive size={26} /></div>
             <h3>No completed orders</h3>
             <p>Completed orders will appear here for 14 days.</p>
           </div>
@@ -38,16 +36,16 @@ export default function CompletedTab({ completedOrders }) {
               </thead>
               <tbody>
                 {completedOrders.map(c => {
-                  const o = c.order_snapshot || {};
-                  const inv = c.invoice_snapshot || {};
-                  const days = daysLeft(c.auto_delete_after);
+                  const o   = c.order_snapshot   || {}
+                  const inv = c.invoice_snapshot  || {}
+                  const days = daysLeft(c.auto_delete_after)
                   return (
                     <tr key={c.id}>
-                      <td className="text-small text-muted">
+                      <td className="text-sm text-muted">
                         {new Date(c.completed_at).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}
                       </td>
                       <td style={{fontWeight:600}}>{o.customer_name || '—'}</td>
-                      <td className="text-small">
+                      <td className="text-sm">
                         {o.direction === 'us_jkt' ? 'US → JKT' : o.direction === 'jkt_us' ? 'JKT → US' : o.direction_other_note || 'Other'}
                       </td>
                       <td>
@@ -55,19 +53,15 @@ export default function CompletedTab({ completedOrders }) {
                           {o.service_type === 'full_service' ? 'Full Service' : 'Shipping Only'}
                         </span>
                       </td>
-                      <td className="text-small" style={{maxWidth:180, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
-                        {o.goods_description || '—'}
-                      </td>
-                      <td style={{fontWeight:600}}>
+                      <td className="text-sm ellipsis" style={{maxWidth:180}}>{o.goods_description || '—'}</td>
+                      <td style={{fontWeight:700}}>
                         {inv.total != null ? `$${Number(inv.total).toFixed(2)}` : '—'}
                       </td>
                       <td>
-                        <span className={`badge ${days <= 3 ? 'badge-amber' : 'badge-gray'}`}>
-                          {days}d
-                        </span>
+                        <span className={`badge ${days <= 3 ? 'badge-amber' : 'badge-gray'}`}>{days}d</span>
                       </td>
                     </tr>
-                  );
+                  )
                 })}
               </tbody>
             </table>
@@ -75,5 +69,5 @@ export default function CompletedTab({ completedOrders }) {
         </div>
       )}
     </div>
-  );
+  )
 }

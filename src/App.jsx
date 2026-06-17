@@ -1,45 +1,55 @@
-// App.jsx
-import { useState, useEffect } from 'react';
-import './App.css';
-import { getSession, onAuthStateChange, signOut, getUserRole } from './lib/auth';
-import { useAppData } from './lib/data';
-import Login           from './components/Login';
-import ErrorBoundary   from './components/ErrorBoundary';
-import OrdersTab       from './components/OrdersTab';
-import TrackingTab     from './components/TrackingTab';
-import InvoiceTab      from './components/InvoiceTab';
-import CompletedTab    from './components/CompletedTab';
-import FinanceTab      from './components/FinanceTab';
+// src/App.jsx
+import { useState, useEffect } from 'react'
+import { Package, Truck, FileText, Archive, DollarSign } from 'lucide-react'
+import { getSession, onAuthStateChange, signOut, getUserRole } from './lib/auth'
+import { useAppData } from './lib/data'
+import Login         from './components/Login'
+import ErrorBoundary from './components/ErrorBoundary'
+import OrdersTab     from './components/OrdersTab'
+import TrackingTab   from './components/TrackingTab'
+import InvoiceTab    from './components/InvoiceTab'
+import CompletedTab  from './components/CompletedTab'
+import FinanceTab    from './components/FinanceTab'
 
-const TABS = [
-  { id: 'orders',    label: '📦 Orders' },
-  { id: 'tracking',  label: '🚚 Tracking' },
-  { id: 'invoices',  label: '🧾 Invoices' },
-  { id: 'completed', label: '✅ Completed' },
-  { id: 'finance',   label: '💰 Finance', ownerOnly: true },
-];
+const ALL_TABS = [
+  { id: 'orders',    label: 'Orders',    Icon: Package,    ownerOnly: false },
+  { id: 'tracking',  label: 'Tracking',  Icon: Truck,      ownerOnly: false },
+  { id: 'invoices',  label: 'Invoices',  Icon: FileText,   ownerOnly: false },
+  { id: 'completed', label: 'Completed', Icon: Archive,    ownerOnly: false },
+  { id: 'finance',   label: 'Finance',   Icon: DollarSign, ownerOnly: true  },
+]
 
 function Dashboard({ session, role }) {
-  const [tab, setTab] = useState('orders');
+  const [tab, setTab] = useState('orders')
+
   const {
     orders, tracking, invoices, completedOrders, carriers,
-    loading, error, reload,
+    loading, error,
     addOrder, updateTracking, advanceStage,
     upsertInvoice, addAdditionalCost, completeOrder,
-  } = useAppData();
+  } = useAppData()
 
-  const visibleTabs = TABS.filter(t => !t.ownerOnly || role === 'owner');
+  const tabs = ALL_TABS.filter(t => !t.ownerOnly || role === 'owner')
 
-  if (loading) return <div className="loading-screen">Loading data...</div>;
-  if (error)   return <div className="error-boundary"><strong>Failed to load:</strong> {error.message}</div>;
+  if (loading) return <div className="loading-screen">Loading…</div>
+  if (error)   return (
+    <div className="error-boundary" style={{margin:24}}>
+      <strong>Failed to load data.</strong>
+      <pre>{error.message}</pre>
+    </div>
+  )
 
   return (
     <div className="app">
+      {/* Header */}
       <header className="app-header">
         <div className="header-brand">
-          <div>
+          <div className="header-logomark">
+            <Package size={18} />
+          </div>
+          <div className="header-brand-text">
             <h1>JE <span>Easyshop</span></h1>
-            <div className="tagline">Freight Management</div>
+            <p>Freight Management</p>
           </div>
         </div>
         <div className="header-right">
@@ -49,47 +59,48 @@ function Dashboard({ session, role }) {
         </div>
       </header>
 
+      {/* Tab nav */}
       <nav className="tab-nav">
-        {visibleTabs.map(t => (
-          <button key={t.id} className={`tab-btn ${tab === t.id ? 'active' : ''}`}
-            onClick={() => setTab(t.id)}>
-            {t.label}
+        {tabs.map(({ id, label, Icon }) => (
+          <button key={id}
+            className={`tab-btn ${tab === id ? 'active' : ''}`}
+            onClick={() => setTab(id)}>
+            <span className="tab-icon"><Icon size={14} /></span>
+            {label}
           </button>
         ))}
       </nav>
 
+      {/* Content */}
       <main className="tab-content">
         <ErrorBoundary>
           {tab === 'orders'    && <OrdersTab   orders={orders} tracking={tracking} addOrder={addOrder} />}
-          {tab === 'tracking'  && <TrackingTab orders={orders} tracking={tracking} carriers={carriers} updateTracking={updateTracking} advanceStage={advanceStage} />}
-          {tab === 'invoices'  && <InvoiceTab  orders={orders} tracking={tracking} invoices={invoices} addAdditionalCost={addAdditionalCost} upsertInvoice={upsertInvoice} completeOrder={completeOrder} />}
+          {tab === 'tracking'  && <TrackingTab orders={orders} tracking={tracking} carriers={carriers}
+                                    updateTracking={updateTracking} advanceStage={advanceStage} />}
+          {tab === 'invoices'  && <InvoiceTab  orders={orders} tracking={tracking} invoices={invoices}
+                                    addAdditionalCost={addAdditionalCost} upsertInvoice={upsertInvoice}
+                                    completeOrder={completeOrder} />}
           {tab === 'completed' && <CompletedTab completedOrders={completedOrders} />}
-          {tab === 'finance'   && role === 'owner' && <FinanceTab completedOrders={completedOrders} />}
+          {tab === 'finance' && role === 'owner' && <FinanceTab completedOrders={completedOrders} />}
         </ErrorBoundary>
       </main>
     </div>
-  );
+  )
 }
 
 export default function App() {
-  const [session, setSession]               = useState(null);
-  const [role, setRole]                     = useState(null);
-  const [checkingSession, setCheckingSession] = useState(true);
+  const [session, setSession]           = useState(null)
+  const [role, setRole]                 = useState(null)
+  const [checking, setChecking]         = useState(true)
 
   useEffect(() => {
     getSession().then(s => {
-      setSession(s);
-      setRole(getUserRole(s));
-      setCheckingSession(false);
-    });
-    const unsub = onAuthStateChange(s => {
-      setSession(s);
-      setRole(getUserRole(s));
-    });
-    return unsub;
-  }, []);
+      setSession(s); setRole(getUserRole(s)); setChecking(false)
+    })
+    return onAuthStateChange(s => { setSession(s); setRole(getUserRole(s)) })
+  }, [])
 
-  if (checkingSession) return <div className="loading-screen">Loading...</div>;
-  if (!session) return <Login onLogin={s => { setSession(s); setRole(getUserRole(s)); }} />;
-  return <Dashboard session={session} role={role} />;
+  if (checking)  return <div className="loading-screen">Loading…</div>
+  if (!session)  return <Login onLogin={s => { setSession(s); setRole(getUserRole(s)) }} />
+  return <Dashboard session={session} role={role} />
 }

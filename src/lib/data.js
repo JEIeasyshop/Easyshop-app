@@ -1,210 +1,161 @@
-// lib/data.js
-import { useState, useEffect, useCallback } from 'react';
-import { supabase } from './supabaseClient';
+// src/lib/data.js
+import { useState, useEffect, useCallback } from 'react'
+import { supabase } from './supabaseClient'
 
-const STAGE_LABELS_FULL = {
+export const STAGE_LABELS = {
   1: 'Ordered',
-  2: 'Package arrived in warehouse',
-  3: 'Package sent to destination',
-  4: 'Received in destination',
+  2: 'Arrived at warehouse',
+  3: 'Sent to destination',
+  4: 'Received at destination',
   5: 'Sent to customer',
   6: 'Received by customer',
-};
-
-// shipping_only skips stage 1 — same labels, just starts at 2
-const STAGE_LABELS_SHIPPING_ONLY = {
-  2: STAGE_LABELS_FULL[2],
-  3: STAGE_LABELS_FULL[3],
-  4: STAGE_LABELS_FULL[4],
-  5: STAGE_LABELS_FULL[5],
-  6: STAGE_LABELS_FULL[6],
-};
+}
 
 export function getStageLabel(serviceType, stage) {
-  const map = serviceType === 'full_service' ? STAGE_LABELS_FULL : STAGE_LABELS_SHIPPING_ONLY;
-  return map[stage] || 'Unknown';
+  return STAGE_LABELS[stage] || 'Unknown'
 }
 
 export function getStageSequence(serviceType) {
-  return serviceType === 'full_service' ? [1, 2, 3, 4, 5, 6] : [2, 3, 4, 5, 6];
+  return serviceType === 'full_service' ? [1, 2, 3, 4, 5, 6] : [2, 3, 4, 5, 6]
 }
 
 export function useAppData() {
-  const [orders, setOrders] = useState([]);
-  const [tracking, setTracking] = useState([]);
-  const [invoices, setInvoices] = useState([]);
-  const [completedOrders, setCompletedOrders] = useState([]);
-  const [carriers, setCarriers] = useState([]);
-  const [pricingRates, setPricingRates] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [orders, setOrders]               = useState([])
+  const [tracking, setTracking]           = useState([])
+  const [invoices, setInvoices]           = useState([])
+  const [completedOrders, setCompleted]   = useState([])
+  const [carriers, setCarriers]           = useState([])
+  const [loading, setLoading]             = useState(true)
+  const [error, setError]                 = useState(null)
 
   const reload = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+    setLoading(true)
+    setError(null)
     try {
-      const [ordersRes, trackingRes, invoicesRes, completedRes, carriersRes, ratesRes] = await Promise.all([
+      const [o, t, inv, c, car] = await Promise.all([
         supabase.from('orders').select('*').order('order_date', { ascending: false }),
         supabase.from('tracking_status').select('*'),
         supabase.from('invoices').select('*'),
         supabase.from('completed_orders').select('*').order('completed_at', { ascending: false }),
         supabase.from('carriers').select('*').eq('active', true),
-        supabase.from('pricing_rates').select('*').eq('active', true),
-      ]);
+      ])
+      if (o.error)   throw o.error
+      if (t.error)   throw t.error
+      if (inv.error) throw inv.error
+      if (c.error)   throw c.error
+      if (car.error) throw car.error
 
-      if (ordersRes.error) throw ordersRes.error;
-      if (trackingRes.error) throw trackingRes.error;
-      if (invoicesRes.error) throw invoicesRes.error;
-      if (completedRes.error) throw completedRes.error;
-      if (carriersRes.error) throw carriersRes.error;
-      if (ratesRes.error) throw ratesRes.error;
-
-      setOrders(ordersRes.data || []);
-      setTracking(trackingRes.data || []);
-      setInvoices(invoicesRes.data || []);
-      setCompletedOrders(completedRes.data || []);
-      setCarriers(carriersRes.data || []);
-      setPricingRates(ratesRes.data || []);
+      setOrders(o.data   || [])
+      setTracking(t.data || [])
+      setInvoices(inv.data || [])
+      setCompleted(c.data  || [])
+      setCarriers(car.data || [])
     } catch (err) {
-      console.error('useAppData reload error:', err);
-      setError(err);
+      console.error('useAppData:', err)
+      setError(err)
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  }, []);
+  }, [])
 
-  useEffect(() => {
-    reload();
-  }, [reload]);
+  useEffect(() => { reload() }, [reload])
 
-  // --- ORDERS ---
+  // ── Orders ──────────────────────────────────────────────
   const addOrder = useCallback(async (orderData) => {
-    const { data, error } = await supabase.from('orders').insert(orderData).select().single();
-    if (error) throw error;
+    const { data, error } = await supabase.from('orders').insert(orderData).select().single()
+    if (error) throw error
 
-    // auto-create tracking row, starting stage depends on service_type
-    const startStage = orderData.service_type === 'full_service' ? 1 : 2;
-    const { error: trackingError } = await supabase.from('tracking_status').insert({
+    const startStage = orderData.service_type === 'full_service' ? 1 : 2
+    const { error: te } = await supabase.from('tracking_status').insert({
       order_id: data.id,
       current_stage: startStage,
       stage_history: [{ stage: startStage, timestamp: new Date().toISOString() }],
-    });
-    if (trackingError) throw trackingError;
+    })
+    if (te) throw te
 
-    await reload();
-    return data;
-  }, [reload]);
+    await reload()
+    return data
+  }, [reload])
 
   const updateOrder = useCallback(async (id, updates) => {
-    const { error } = await supabase
-      .from('orders')
-      .update({ ...updates, updated_at: new Date().toISOString() })
-      .eq('id', id);
-    if (error) throw error;
-    await reload();
-  }, [reload]);
+    const { error } = await supabase.from('orders')
+      .update({ ...updates, updated_at: new Date().toISOString() }).eq('id', id)
+    if (error) throw error
+    await reload()
+  }, [reload])
 
-  // --- TRACKING ---
+  // ── Tracking ─────────────────────────────────────────────
   const updateTracking = useCallback(async (orderId, updates) => {
-    const { error } = await supabase
-      .from('tracking_status')
-      .update({ ...updates, updated_at: new Date().toISOString() })
-      .eq('order_id', orderId);
-    if (error) throw error;
-    await reload();
-  }, [reload]);
+    const { error } = await supabase.from('tracking_status')
+      .update({ ...updates, updated_at: new Date().toISOString() }).eq('order_id', orderId)
+    if (error) throw error
+    await reload()
+  }, [reload])
 
   const advanceStage = useCallback(async (orderId, newStage, note = '') => {
-    const current = tracking.find((t) => t.order_id === orderId);
-    if (!current) throw new Error('Tracking record not found');
-
+    const current = tracking.find(t => t.order_id === orderId)
+    if (!current) throw new Error('Tracking record not found')
     const newHistory = [
       ...(current.stage_history || []),
       { stage: newStage, timestamp: new Date().toISOString(), note },
-    ];
+    ]
+    await updateTracking(orderId, { current_stage: newStage, stage_history: newHistory })
+  }, [tracking, updateTracking])
 
-    await updateTracking(orderId, {
-      current_stage: newStage,
-      stage_history: newHistory,
-    });
-  }, [tracking, updateTracking]);
-
-  // --- INVOICES ---
+  // ── Invoices ─────────────────────────────────────────────
   const upsertInvoice = useCallback(async (orderId, invoiceData) => {
-    const { error } = await supabase
-      .from('invoices')
-      .upsert(
-        { order_id: orderId, ...invoiceData, updated_at: new Date().toISOString() },
-        { onConflict: 'order_id' }
-      );
-    if (error) throw error;
-    await reload();
-  }, [reload]);
+    const { error } = await supabase.from('invoices').upsert(
+      { order_id: orderId, ...invoiceData, updated_at: new Date().toISOString() },
+      { onConflict: 'order_id' }
+    )
+    if (error) throw error
+    await reload()
+  }, [reload])
 
   const addAdditionalCost = useCallback(async (orderId, description, amount) => {
-    const invoice = invoices.find((inv) => inv.order_id === orderId);
-    const existingCosts = invoice?.additional_costs || [];
-    const newCosts = [...existingCosts, { description, amount }];
-    const newTotal = (invoice?.base_price || 0) + newCosts.reduce((sum, c) => sum + Number(c.amount), 0);
-
+    const invoice     = invoices.find(inv => inv.order_id === orderId)
+    const existing    = invoice?.additional_costs || []
+    const newCosts    = [...existing, { description, amount }]
+    const newTotal    = (invoice?.base_price || 0) + newCosts.reduce((s, c) => s + Number(c.amount), 0)
     await upsertInvoice(orderId, {
       base_price: invoice?.base_price || 0,
       additional_costs: newCosts,
       total: newTotal,
-    });
-  }, [invoices, upsertInvoice]);
+    })
+  }, [invoices, upsertInvoice])
 
-  // --- COMPLETE ORDER (move to completed_orders, delete from active tables) ---
+  // ── Complete order ────────────────────────────────────────
   const completeOrder = useCallback(async (orderId) => {
-    const order = orders.find((o) => o.id === orderId);
-    const trackingRow = tracking.find((t) => t.order_id === orderId);
-    const invoiceRow = invoices.find((inv) => inv.order_id === orderId);
+    const order      = orders.find(o => o.id === orderId)
+    const trackingRow = tracking.find(t => t.order_id === orderId)
+    const invoiceRow  = invoices.find(i => i.order_id === orderId)
+    if (!order) throw new Error('Order not found')
 
-    if (!order) throw new Error('Order not found');
-
-    const { error: insertError } = await supabase.from('completed_orders').insert({
+    const { error: ie } = await supabase.from('completed_orders').insert({
       original_order_id: orderId,
-      order_snapshot: order,
+      order_snapshot:    order,
       tracking_snapshot: trackingRow || null,
-      invoice_snapshot: invoiceRow || null,
-    });
-    if (insertError) throw insertError;
+      invoice_snapshot:  invoiceRow  || null,
+    })
+    if (ie) throw ie
 
-    // delete from active tables (tracking & invoices cascade via FK, but explicit for clarity)
-    await supabase.from('invoices').delete().eq('order_id', orderId);
-    await supabase.from('tracking_status').delete().eq('order_id', orderId);
-    await supabase.from('orders').delete().eq('id', orderId);
+    await supabase.from('invoices').delete().eq('order_id', orderId)
+    await supabase.from('tracking_status').delete().eq('order_id', orderId)
+    await supabase.from('orders').delete().eq('id', orderId)
+    await reload()
+  }, [orders, tracking, invoices, reload])
 
-    await reload();
-  }, [orders, tracking, invoices, reload]);
-
-  // --- CLEANUP EXPIRED COMPLETED ORDERS (call on mount / via scheduled job) ---
-  const cleanupExpiredCompleted = useCallback(async () => {
-    const { error } = await supabase
-      .from('completed_orders')
-      .delete()
-      .lt('auto_delete_after', new Date().toISOString());
-    if (error) throw error;
-    await reload();
-  }, [reload]);
+  const cleanupExpired = useCallback(async () => {
+    await supabase.from('completed_orders').delete().lt('auto_delete_after', new Date().toISOString())
+    await reload()
+  }, [reload])
 
   return {
-    orders,
-    tracking,
-    invoices,
-    completedOrders,
-    carriers,
-    pricingRates,
-    loading,
-    error,
-    reload,
-    addOrder,
-    updateOrder,
-    updateTracking,
-    advanceStage,
-    upsertInvoice,
-    addAdditionalCost,
-    completeOrder,
-    cleanupExpiredCompleted,
-  };
+    orders, tracking, invoices, completedOrders, carriers,
+    loading, error, reload,
+    addOrder, updateOrder,
+    updateTracking, advanceStage,
+    upsertInvoice, addAdditionalCost,
+    completeOrder, cleanupExpired,
+  }
 }
