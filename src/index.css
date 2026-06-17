@@ -572,6 +572,73 @@ tbody tr:hover td { background: var(--gray-50); }
 .cost-total-label { font-family: var(--font-brand); font-size: 13px; font-weight: 700; color: rgba(255,255,255,0.7); }
 .cost-total-value { font-family: var(--font-brand); font-size: 20px; font-weight: 800; color: var(--gold); }
 
+/* ── Pricing block (OrderForm step 2) ───────────────────── */
+.pricing-block {
+  background: var(--gray-50);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--r-lg);
+  padding: 16px;
+}
+.pricing-block-title {
+  font-size: 10.5px; font-weight: 700;
+  color: var(--gray-400); letter-spacing: 0.09em;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+  font-family: var(--font-brand);
+}
+.weight-compare {
+  background: var(--white);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--r-md);
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  font-size: 12.5px;
+}
+.weight-compare-row {
+  display: flex; justify-content: space-between;
+  padding: 4px 0;
+  color: var(--gray-600);
+  border-bottom: 1px solid var(--gray-100);
+}
+.weight-compare-row:last-child { border-bottom: none; }
+.weight-compare-row.chargeable {
+  color: var(--navy); font-weight: 700; font-family: var(--font-brand);
+  padding-top: 8px; margin-top: 4px;
+}
+.rate-input-row {
+  display: flex; gap: 8px;
+}
+.btn-add-cost {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: none; border: none;
+  color: var(--blue); font-size: 12px; font-weight: 600;
+  cursor: pointer; padding: 0;
+  transition: color 0.15s;
+}
+.btn-add-cost:hover { color: var(--navy); }
+.additional-cost-row {
+  display: flex; gap: 8px; align-items: center; margin-bottom: 8px;
+}
+.pricing-summary {
+  background: var(--white);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--r-md);
+  padding: 10px 14px;
+  margin-top: 12px;
+}
+.pricing-summary-row {
+  display: flex; justify-content: space-between;
+  font-size: 12.5px; color: var(--gray-600);
+  padding: 4px 0; border-bottom: 1px solid var(--gray-100);
+}
+.pricing-summary-total {
+  display: flex; justify-content: space-between; align-items: center;
+  padding-top: 10px; margin-top: 4px;
+  font-family: var(--font-brand);
+  font-size: 15px; font-weight: 800;
+  color: var(--navy);
+}
+
 /* ── Divider ─────────────────────────────────────────────── */
 hr { border: none; border-top: 1px solid var(--gray-100); margin: 16px 0; }
 

@@ -1,6 +1,7 @@
 // src/components/OrderForm.jsx
-import { useState } from 'react'
-import { X } from 'lucide-react'
+import { useState, useMemo } from 'react'
+import { X, Plus, Trash2 } from 'lucide-react'
+import { chargeableWeight, calcShippingOnly, formatCurrency } from '../lib/pricing'
 
 const DIRECTIONS = [
   { value: 'us_jkt', label: 'US → JKT' },
@@ -11,31 +12,79 @@ const SERVICES = [
   { value: 'full_service',  title: 'Full Service',   desc: 'Order pickup + warehouse + shipping' },
   { value: 'shipping_only', title: 'Shipping Only',  desc: 'Drop-off at warehouse, ship only' },
 ]
-const STEPS = ['Information', 'Goods & Details', 'Additional Notes']
+const STEPS = ['Information', 'Goods, Details & Pricing', 'Additional Notes']
 
-const empty = {
-  order_date: new Date().toISOString().split('T')[0],
-  customer_name: '',
-  direction: '',
+const emptyForm = {
+  order_date:           new Date().toISOString().split('T')[0],
+  customer_name:        '',
+  direction:            '',
   direction_other_note: '',
-  service_type: '',
-  goods_description: '',
-  goods_link: '',
-  weight_unit: 'kg',
-  weight_kg: '', weight_lb: '',
+  service_type:         '',
+  // Goods
+  goods_description:    '',
+  goods_link:           '',
+  // Weight / dimensions
+  weight_unit:  'kg',
+  weight_kg:    '', weight_lb: '',
   length_cm: '', width_cm: '', height_cm: '',
   length_in: '', width_in: '', height_in: '',
+  // Pricing — full service (free-text)
+  full_service_pricing_notes: '',
+  // Pricing — shipping only
+  qty:            1,
+  rate_per_kg:    '',
+  rate_currency:  'USD',
+  vol_divisor:    5000,
+  additional_costs: [],   // [{ description, amount }]
+  // Notes
   additional_notes: '',
 }
 
 export default function OrderForm({ onSubmit, onClose }) {
   const [step, setStep]     = useState(0)
-  const [form, setForm]     = useState(empty)
+  const [form, setForm]     = useState(emptyForm)
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState('')
 
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  const set  = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  const isMetric       = form.weight_unit === 'kg'
+  const isFullService  = form.service_type === 'full_service'
+  const isShippingOnly = form.service_type === 'shipping_only'
 
+  // ── Live pricing calc (shipping only) ───────────────────
+  const pricing = useMemo(() => {
+    if (!isShippingOnly) return null
+    return calcShippingOnly({
+      rate:            form.rate_per_kg,
+      currency:        form.rate_currency,
+      additionalCosts: form.additional_costs,
+      weightUnit:      form.weight_unit,
+      weightKg:        form.weight_kg,
+      weightLb:        form.weight_lb,
+      lengthCm:        form.length_cm, widthCm: form.width_cm, heightCm: form.height_cm,
+      lengthIn:        form.length_in, widthIn: form.width_in, heightIn: form.height_in,
+      divisor:         form.vol_divisor,
+      qty:             form.qty,
+    })
+  }, [isShippingOnly, form.rate_per_kg, form.rate_currency, form.additional_costs,
+      form.weight_unit, form.weight_kg, form.weight_lb,
+      form.length_cm, form.width_cm, form.height_cm,
+      form.length_in, form.width_in, form.height_in,
+      form.vol_divisor, form.qty])
+
+  // ── Additional costs helpers ─────────────────────────────
+  const addCost = () => {
+    set('additional_costs', [...form.additional_costs, { description: '', amount: '' }])
+  }
+  const updateCost = (i, field, val) => {
+    const costs = form.additional_costs.map((c, idx) => idx === i ? { ...c, [field]: val } : c)
+    set('additional_costs', costs)
+  }
+  const removeCost = (i) => {
+    set('additional_costs', form.additional_costs.filter((_, idx) => idx !== i))
+  }
+
+  // ── Validation ───────────────────────────────────────────
   const validate = () => {
     if (step === 0) {
       if (!form.customer_name.trim()) return 'Customer name is required.'
@@ -50,17 +99,17 @@ export default function OrderForm({ onSubmit, onClose }) {
   }
 
   const next = () => {
-    const err = validate()
-    if (err) { setError(err); return }
+    const err = validate(); if (err) { setError(err); return }
     setError(''); setStep(s => s + 1)
   }
-
   const back = () => { setError(''); setStep(s => s - 1) }
 
+  // ── Submit ───────────────────────────────────────────────
   const submit = async () => {
     setSaving(true); setError('')
     try {
       const p = { ...form }
+      // Normalise weights to both units
       if (form.weight_unit === 'lb') {
         p.weight_lb = form.weight_lb || null
         p.weight_kg = form.weight_lb ? +(parseFloat(form.weight_lb) * 0.453592).toFixed(3) : null
@@ -71,6 +120,15 @@ export default function OrderForm({ onSubmit, onClose }) {
       ;['length_cm','width_cm','height_cm','length_in','width_in','height_in'].forEach(k => {
         p[k] = form[k] ? parseFloat(form[k]) : null
       })
+      p.qty         = parseInt(form.qty) || 1
+      p.rate_per_kg = parseFloat(form.rate_per_kg) || null
+      // Store computed price on save
+      if (pricing) {
+        p.computed_base_price = pricing.basePrice
+        p.computed_total      = pricing.total
+        p.computed_currency   = pricing.currency
+        p.chargeable_weight_kg = pricing.weightBreakdown.chargeableKg
+      }
       await onSubmit(p)
     } catch (err) {
       setError(err.message || 'Failed to save.')
@@ -78,13 +136,11 @@ export default function OrderForm({ onSubmit, onClose }) {
     }
   }
 
-  const isMetric = form.weight_unit === 'kg'
-
   return (
     <div className="overlay">
       <div className="wizard-modal">
 
-        {/* Header */}
+        {/* ── Header ── */}
         <div className="wizard-header">
           <div className="flex-between">
             <div>
@@ -100,11 +156,11 @@ export default function OrderForm({ onSubmit, onClose }) {
           </div>
         </div>
 
-        {/* Body */}
+        {/* ── Body ── */}
         <div className="wizard-body">
           {error && <div className="login-error" style={{marginBottom:16}}>{error}</div>}
 
-          {/* Step 0 — Information */}
+          {/* ═══ STEP 0 — Information ═══ */}
           {step === 0 && <>
             <div className="form-row mb-16">
               <div className="form-group" style={{marginBottom:0}}>
@@ -132,8 +188,7 @@ export default function OrderForm({ onSubmit, onClose }) {
                 ))}
               </div>
               {form.direction === 'other' && (
-                <input className="form-input mt-8" type="text"
-                  placeholder="Describe the route…"
+                <input className="form-input mt-8" type="text" placeholder="Describe the route…"
                   value={form.direction_other_note}
                   onChange={e => set('direction_other_note', e.target.value)} />
               )}
@@ -156,8 +211,9 @@ export default function OrderForm({ onSubmit, onClose }) {
             </div>
           </>}
 
-          {/* Step 1 — Goods & Details */}
+          {/* ═══ STEP 1 — Goods, Details & Pricing ═══ */}
           {step === 1 && <>
+            {/* Goods description */}
             <div className="form-group">
               <label className="form-label">Goods Description</label>
               <textarea className="form-textarea"
@@ -166,21 +222,23 @@ export default function OrderForm({ onSubmit, onClose }) {
                 onChange={e => set('goods_description', e.target.value)} />
             </div>
 
-            {form.service_type === 'full_service' && (
+            {/* Order link — full service only */}
+            {isFullService && (
               <div className="form-group">
                 <label className="form-label">
                   Order Link <span className="optional">(optional)</span>
                 </label>
                 <input className="form-input" type="url" placeholder="https://…"
                   value={form.goods_link} onChange={e => set('goods_link', e.target.value)} />
-                <div className="form-hint">Tap to open the product page directly</div>
+                <div className="form-hint">User can tap to open the product page directly</div>
               </div>
             )}
 
+            {/* Weight unit toggle */}
             <div className="form-group">
-              <label className="form-label">Unit</label>
+              <label className="form-label">Unit System</label>
               <div className="radio-group">
-                {['kg','lb'].map(u => (
+                {['kg', 'lb'].map(u => (
                   <label key={u} className={`radio-pill ${form.weight_unit === u ? 'selected' : ''}`}>
                     <input type="radio" name="wu" value={u}
                       checked={form.weight_unit === u} onChange={() => set('weight_unit', u)} />
@@ -190,15 +248,25 @@ export default function OrderForm({ onSubmit, onClose }) {
               </div>
             </div>
 
-            <div className="form-group">
-              <label className="form-label">Weight ({isMetric ? 'kg' : 'lb'})</label>
-              <input className="form-input" type="number" min="0" step="0.01"
-                placeholder={`e.g. 2.5 ${isMetric ? 'kg' : 'lb'}`}
-                value={isMetric ? form.weight_kg : form.weight_lb}
-                onChange={e => set(isMetric ? 'weight_kg' : 'weight_lb', e.target.value)} />
+            {/* Weight + qty */}
+            <div className="form-row">
+              <div className="form-group" style={{marginBottom:0}}>
+                <label className="form-label">Weight ({isMetric ? 'kg' : 'lb'})</label>
+                <input className="form-input" type="number" min="0" step="0.01"
+                  placeholder={`e.g. 2.5 ${isMetric ? 'kg' : 'lb'}`}
+                  value={isMetric ? form.weight_kg : form.weight_lb}
+                  onChange={e => set(isMetric ? 'weight_kg' : 'weight_lb', e.target.value)} />
+              </div>
+              <div className="form-group" style={{marginBottom:0}}>
+                <label className="form-label">Qty (items)</label>
+                <input className="form-input" type="number" min="1" step="1"
+                  value={form.qty}
+                  onChange={e => set('qty', e.target.value)} />
+              </div>
             </div>
 
-            <div className="form-group">
+            {/* Dimensions */}
+            <div className="form-group mt-16">
               <label className="form-label">
                 Dimensions ({isMetric ? 'cm' : 'in'}) <span className="optional">(optional)</span>
               </label>
@@ -215,15 +283,145 @@ export default function OrderForm({ onSubmit, onClose }) {
                 ))}
               </div>
             </div>
+
+            {/* ── PRICING BLOCK ── */}
+            <div className="pricing-block mt-16">
+
+              {/* Full service — free text notes */}
+              {isFullService && (
+                <div className="form-group" style={{marginBottom:0}}>
+                  <label className="form-label">Pricing Notes <span className="optional">(optional)</span></label>
+                  <textarea className="form-textarea" style={{minHeight:80}}
+                    placeholder="Enter pricing details, quote reference, or leave blank to fill in invoice later…"
+                    value={form.full_service_pricing_notes}
+                    onChange={e => set('full_service_pricing_notes', e.target.value)} />
+                </div>
+              )}
+
+              {/* Shipping only — calculated pricing */}
+              {isShippingOnly && (<>
+                <div className="pricing-block-title">
+                  PRICING — SHIPPING ONLY
+                </div>
+
+                {/* Volumetric divisor */}
+                <div className="form-group">
+                  <label className="form-label">Volumetric Divisor</label>
+                  <div className="radio-group">
+                    {[5000, 6000].map(d => (
+                      <label key={d} className={`radio-pill ${form.vol_divisor === d ? 'selected' : ''}`}>
+                        <input type="radio" name="divisor" value={d}
+                          checked={form.vol_divisor === d}
+                          onChange={() => set('vol_divisor', d)} />
+                        {d.toLocaleString()}
+                      </label>
+                    ))}
+                  </div>
+                  <div className="form-hint">5000 = standard air; 6000 = some courier/sea rates</div>
+                </div>
+
+                {/* Weight comparison */}
+                {pricing?.weightBreakdown && (
+                  <div className="weight-compare">
+                    <div className="weight-compare-row">
+                      <span>Actual weight</span>
+                      <span>{pricing.weightBreakdown.actualKg} kg</span>
+                    </div>
+                    {pricing.weightBreakdown.volumetricKg !== null && (
+                      <div className="weight-compare-row">
+                        <span>Volumetric weight (÷{form.vol_divisor.toLocaleString()})</span>
+                        <span>{pricing.weightBreakdown.volumetricKg} kg</span>
+                      </div>
+                    )}
+                    <div className="weight-compare-row chargeable">
+                      <span>
+                        Chargeable weight
+                        {pricing.weightBreakdown.usedVolumetric
+                          ? ' (volumetric wins)'
+                          : pricing.weightBreakdown.volumetricKg !== null
+                            ? ' (actual wins)'
+                            : ''}
+                      </span>
+                      <span>{pricing.weightBreakdown.chargeableKg} kg</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Rate per kg */}
+                <div className="form-group">
+                  <label className="form-label">Rate per kg</label>
+                  <div className="rate-input-row">
+                    <input className="form-input" type="number" min="0" step="0.01"
+                      placeholder="0"
+                      value={form.rate_per_kg}
+                      onChange={e => set('rate_per_kg', e.target.value)} />
+                    <select className="form-select" style={{width:90}}
+                      value={form.rate_currency}
+                      onChange={e => set('rate_currency', e.target.value)}>
+                      <option value="USD">USD</option>
+                      <option value="IDR">IDR</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Additional costs */}
+                <div className="form-group">
+                  <div className="flex-between" style={{marginBottom:8}}>
+                    <label className="form-label" style={{marginBottom:0}}>Additional Costs</label>
+                    <button className="btn-add-cost" onClick={addCost}>
+                      <Plus size={13} /> Add cost
+                    </button>
+                  </div>
+
+                  {form.additional_costs.length === 0
+                    ? <p className="text-sm text-muted">No additional costs yet.</p>
+                    : form.additional_costs.map((c, i) => (
+                      <div key={i} className="additional-cost-row">
+                        <input className="form-input" type="text" placeholder="Description"
+                          value={c.description}
+                          onChange={e => updateCost(i, 'description', e.target.value)} />
+                        <input className="form-input" type="number" min="0" step="0.01"
+                          placeholder="Amount" style={{width:110}}
+                          value={c.amount}
+                          onChange={e => updateCost(i, 'amount', e.target.value)} />
+                        <button className="btn-ghost" onClick={() => removeCost(i)}>
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ))
+                  }
+                </div>
+
+                {/* Live total */}
+                {pricing && (
+                  <div className="pricing-summary">
+                    <div className="pricing-summary-row">
+                      <span>Weight charge ({pricing.weightBreakdown.chargeableKg} kg × {formatCurrency(parseFloat(form.rate_per_kg)||0, form.rate_currency)}/kg)</span>
+                      <span>{formatCurrency(pricing.basePrice, pricing.currency)}</span>
+                    </div>
+                    {pricing.additionalTotal > 0 && (
+                      <div className="pricing-summary-row">
+                        <span>Additional costs</span>
+                        <span>{formatCurrency(pricing.additionalTotal, pricing.currency)}</span>
+                      </div>
+                    )}
+                    <div className="pricing-summary-total">
+                      <span>Total</span>
+                      <span>{formatCurrency(pricing.total, pricing.currency)}</span>
+                    </div>
+                  </div>
+                )}
+              </>)}
+            </div>
           </>}
 
-          {/* Step 2 — Notes */}
+          {/* ═══ STEP 2 — Additional Notes ═══ */}
           {step === 2 && (
             <div className="form-group">
               <label className="form-label">
                 Additional Notes <span className="optional">(optional)</span>
               </label>
-              <textarea className="form-textarea" style={{minHeight:160}}
+              <textarea className="form-textarea" style={{minHeight:180}}
                 placeholder="Special handling instructions, delivery preferences, anything else…"
                 value={form.additional_notes}
                 onChange={e => set('additional_notes', e.target.value)} />
@@ -231,7 +429,7 @@ export default function OrderForm({ onSubmit, onClose }) {
           )}
         </div>
 
-        {/* Footer */}
+        {/* ── Footer ── */}
         <div className="wizard-footer">
           <button className="btn btn-outline" onClick={step === 0 ? onClose : back}>
             {step === 0 ? 'Cancel' : '← Back'}
