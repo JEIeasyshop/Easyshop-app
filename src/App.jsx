@@ -25,14 +25,19 @@ function Dashboard({ session, role }) {
   const {
     orders, tracking, invoices, completedOrders, carriers,
     loading, error,
-    addOrder, updateTracking, advanceStage,
-    upsertInvoice, addAdditionalCost, completeOrder,
+    addOrder, updateOrder,
+    updateTracking, advanceStage,
+    upsertInvoice, addInvoiceCost, lockInvoiceTotal,
+    completeOrder, revertCompleted, deleteCompleted, cleanupExpired,
   } = useAppData()
+
+  // Clean up auto-expired completed orders on mount
+  useEffect(() => { cleanupExpired() }, []) // eslint-disable-line
 
   const tabs = ALL_TABS.filter(t => !t.ownerOnly || role === 'owner')
 
   if (loading) return <div className="loading-screen">Loading…</div>
-  if (error)   return (
+  if (error) return (
     <div className="error-boundary" style={{margin:24}}>
       <strong>Failed to load data.</strong>
       <pre>{error.message}</pre>
@@ -69,17 +74,45 @@ function Dashboard({ session, role }) {
         ))}
       </nav>
 
-      {/* Content */}
+      {/* Content — all tabs receive the full data + helpers they need */}
       <main className="tab-content">
         <ErrorBoundary>
-          {tab === 'orders'    && <OrdersTab   orders={orders} tracking={tracking} addOrder={addOrder} />}
-          {tab === 'tracking'  && <TrackingTab orders={orders} tracking={tracking} carriers={carriers}
-                                    updateTracking={updateTracking} advanceStage={advanceStage} />}
-          {tab === 'invoices'  && <InvoiceTab  orders={orders} tracking={tracking} invoices={invoices}
-                                    addAdditionalCost={addAdditionalCost} upsertInvoice={upsertInvoice}
-                                    completeOrder={completeOrder} />}
-          {tab === 'completed' && <CompletedTab completedOrders={completedOrders} />}
-          {tab === 'finance' && role === 'owner' && <FinanceTab completedOrders={completedOrders} />}
+          {tab === 'orders' && (
+            <OrdersTab
+              orders={orders}
+              tracking={tracking}
+              addOrder={addOrder}
+            />
+          )}
+          {tab === 'tracking' && (
+            <TrackingTab
+              orders={orders}
+              tracking={tracking}
+              carriers={carriers}
+              updateTracking={updateTracking}
+              advanceStage={advanceStage}
+            />
+          )}
+          {tab === 'invoices' && (
+            <InvoiceTab
+              orders={orders}
+              tracking={tracking}
+              invoices={invoices}
+              addInvoiceCost={addInvoiceCost}
+              lockInvoiceTotal={lockInvoiceTotal}
+              completeOrder={completeOrder}
+            />
+          )}
+          {tab === 'completed' && (
+            <CompletedTab
+              completedOrders={completedOrders}
+              revertCompleted={revertCompleted}
+              deleteCompleted={deleteCompleted}
+            />
+          )}
+          {tab === 'finance' && role === 'owner' && (
+            <FinanceTab completedOrders={completedOrders} />
+          )}
         </ErrorBoundary>
       </main>
     </div>
@@ -87,9 +120,9 @@ function Dashboard({ session, role }) {
 }
 
 export default function App() {
-  const [session, setSession]           = useState(null)
-  const [role, setRole]                 = useState(null)
-  const [checking, setChecking]         = useState(true)
+  const [session, setSession] = useState(null)
+  const [role, setRole]       = useState(null)
+  const [checking, setChecking] = useState(true)
 
   useEffect(() => {
     getSession().then(s => {
@@ -98,7 +131,7 @@ export default function App() {
     return onAuthStateChange(s => { setSession(s); setRole(getUserRole(s)) })
   }, [])
 
-  if (checking)  return <div className="loading-screen">Loading…</div>
-  if (!session)  return <Login onLogin={s => { setSession(s); setRole(getUserRole(s)) }} />
+  if (checking) return <div className="loading-screen">Loading…</div>
+  if (!session) return <Login onLogin={s => { setSession(s); setRole(getUserRole(s)) }} />
   return <Dashboard session={session} role={role} />
 }
