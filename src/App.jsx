@@ -44,11 +44,9 @@ function Dashboard({ session, role }) {
       {/* Header */}
       <header className="app-header">
         <div className="header-brand">
-          <div className="header-logomark">
-            <Package size={18} />
-          </div>
+          <img src="/logo.png" alt="JEI" className="header-logo-img" />
           <div className="header-brand-text">
-            <h1>JE <span>Easyshop</span></h1>
+            <h1>Jon Express <span>International</span></h1>
             <p>Freight Management</p>
           </div>
         </div>

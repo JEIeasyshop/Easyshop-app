@@ -1,6 +1,5 @@
 // src/components/Login.jsx
 import { useState } from 'react'
-import { Package } from 'lucide-react'
 import { signIn } from '../lib/auth'
 
 export default function Login({ onLogin }) {
@@ -26,10 +25,8 @@ export default function Login({ onLogin }) {
     <div className="login-container">
       <div className="login-card">
         <div className="login-logo">
-          <div className="login-logo-mark">
-            <Package size={24} />
-          </div>
-          <h1>JE <span>Easyshop</span></h1>
+          <img src="/logo.png" alt="JEI Logo" className="login-logo-img" />
+          <h1>Jon Express <span>International</span></h1>
           <p>Freight Management</p>
         </div>
 
