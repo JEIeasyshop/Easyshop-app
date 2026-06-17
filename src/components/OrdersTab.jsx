@@ -159,7 +159,16 @@ export default function OrdersTab({ orders, tracking, addOrder }) {
                         </div>
                         {o.goods_link &&
                           <a href={o.goods_link} target="_blank" rel="noreferrer"
-                            className="text-sm" style={{color:'var(--blue)'}}>🔗 Link</a>}
+                            className="text-sm" style={{color:'var(--blue)'}}>🔗 Order link</a>}
+                        {o.order_tracking_link &&
+                          <a href={o.order_tracking_link} target="_blank" rel="noreferrer"
+                            className="text-sm" style={{color:'var(--blue)', marginLeft: o.goods_link ? 8 : 0}}>
+                            🚚 Track
+                          </a>}
+                        {o.eta_date &&
+                          <span className="text-sm text-muted" style={{marginLeft:8}}>
+                            ETA: {new Date(o.eta_date).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}
+                          </span>}
                       </td>
                       <td>
                         {chargedKg

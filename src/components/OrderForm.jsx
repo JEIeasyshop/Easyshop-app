@@ -1,6 +1,6 @@
 // src/components/OrderForm.jsx
 import { useState, useMemo } from 'react'
-import { X, Plus, Trash2 } from 'lucide-react'
+import { X, Plus, Trash2, ExternalLink } from 'lucide-react'
 import { chargeableWeight, calcShippingOnly, formatCurrency } from '../lib/pricing'
 
 const DIRECTIONS = [
@@ -12,32 +12,39 @@ const SERVICES = [
   { value: 'full_service',  title: 'Full Service',   desc: 'Order pickup + warehouse + shipping' },
   { value: 'shipping_only', title: 'Shipping Only',  desc: 'Drop-off at warehouse, ship only' },
 ]
-const STEPS = ['Information', 'Goods, Details & Pricing', 'Additional Notes']
+const STEPS = ['Information', 'Goods & Pricing', 'Additional Notes']
 
 const emptyForm = {
-  order_date:           new Date().toISOString().split('T')[0],
+  // Step 1 — Information (reordered per request)
   customer_name:        '',
+  contact_number:       '',
+  order_date:           new Date().toISOString().split('T')[0],
   direction:            '',
   direction_other_note: '',
+  delivery_address:     '',
   service_type:         '',
-  // Goods
+  // Step 2 — Goods & Pricing
   goods_description:    '',
-  goods_link:           '',
-  // Weight / dimensions
-  weight_unit:  'kg',
-  weight_kg:    '', weight_lb: '',
+  goods_link:           '',            // product/order link
+  order_tracking_link:  '',            // shipment tracking link
+  eta_date:             '',            // estimated arrival date
+  weight_unit:          'kg',
+  weight_kg:            '',
+  weight_lb:            '',
   length_cm: '', width_cm: '', height_cm: '',
   length_in: '', width_in: '', height_in: '',
-  // Pricing — full service (free-text)
+  qty:                  1,
+  // Full service pricing
+  full_service_price:   '',            // manual price entry
+  full_service_currency:'USD',
   full_service_pricing_notes: '',
-  // Pricing — shipping only
-  qty:            1,
-  rate_per_kg:    '',
-  rate_currency:  'USD',
-  vol_divisor:    5000,
-  additional_costs: [],   // [{ description, amount }]
-  // Notes
-  additional_notes: '',
+  // Shipping only pricing
+  rate_per_kg:          '',
+  rate_currency:        'USD',
+  vol_divisor:          5000,
+  additional_costs:     [],            // [{ description, amount }]
+  // Step 3
+  additional_notes:     '',
 }
 
 export default function OrderForm({ onSubmit, onClose }) {
@@ -46,14 +53,14 @@ export default function OrderForm({ onSubmit, onClose }) {
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState('')
 
-  const set  = (k, v) => setForm(f => ({ ...f, [k]: v }))
-  const isMetric       = form.weight_unit === 'kg'
-  const isFullService  = form.service_type === 'full_service'
-  const isShippingOnly = form.service_type === 'shipping_only'
+  const set        = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  const isMetric   = form.weight_unit === 'kg'
+  const isFull     = form.service_type === 'full_service'
+  const isShipping = form.service_type === 'shipping_only'
 
-  // ── Live pricing calc (shipping only) ───────────────────
+  // ── Live pricing (shipping only) ─────────────────────────
   const pricing = useMemo(() => {
-    if (!isShippingOnly) return null
+    if (!isShipping) return null
     return calcShippingOnly({
       rate:            form.rate_per_kg,
       currency:        form.rate_currency,
@@ -61,35 +68,31 @@ export default function OrderForm({ onSubmit, onClose }) {
       weightUnit:      form.weight_unit,
       weightKg:        form.weight_kg,
       weightLb:        form.weight_lb,
-      lengthCm:        form.length_cm, widthCm: form.width_cm, heightCm: form.height_cm,
-      lengthIn:        form.length_in, widthIn: form.width_in, heightIn: form.height_in,
-      divisor:         form.vol_divisor,
-      qty:             form.qty,
+      lengthCm: form.length_cm, widthCm: form.width_cm, heightCm: form.height_cm,
+      lengthIn: form.length_in, widthIn: form.width_in, heightIn: form.height_in,
+      divisor:  form.vol_divisor,
+      qty:      form.qty,
     })
-  }, [isShippingOnly, form.rate_per_kg, form.rate_currency, form.additional_costs,
+  }, [isShipping, form.rate_per_kg, form.rate_currency, form.additional_costs,
       form.weight_unit, form.weight_kg, form.weight_lb,
       form.length_cm, form.width_cm, form.height_cm,
       form.length_in, form.width_in, form.height_in,
       form.vol_divisor, form.qty])
 
-  // ── Additional costs helpers ─────────────────────────────
-  const addCost = () => {
-    set('additional_costs', [...form.additional_costs, { description: '', amount: '' }])
-  }
-  const updateCost = (i, field, val) => {
-    const costs = form.additional_costs.map((c, idx) => idx === i ? { ...c, [field]: val } : c)
-    set('additional_costs', costs)
-  }
-  const removeCost = (i) => {
-    set('additional_costs', form.additional_costs.filter((_, idx) => idx !== i))
-  }
+  // ── Additional costs helpers ──────────────────────────────
+  const addCost    = () => set('additional_costs', [...form.additional_costs, { description:'', amount:'' }])
+  const updateCost = (i, field, val) => set('additional_costs',
+    form.additional_costs.map((c, idx) => idx === i ? { ...c, [field]: val } : c))
+  const removeCost = (i) => set('additional_costs',
+    form.additional_costs.filter((_, idx) => idx !== i))
 
-  // ── Validation ───────────────────────────────────────────
+  // ── Validation ────────────────────────────────────────────
   const validate = () => {
     if (step === 0) {
       if (!form.customer_name.trim()) return 'Customer name is required.'
       if (!form.direction)            return 'Please select a direction.'
-      if (form.direction === 'other' && !form.direction_other_note.trim()) return 'Please describe the direction.'
+      if (form.direction === 'other' && !form.direction_other_note.trim())
+        return 'Please describe the direction.'
       if (!form.service_type)         return 'Please select a service type.'
     }
     if (step === 1) {
@@ -104,12 +107,12 @@ export default function OrderForm({ onSubmit, onClose }) {
   }
   const back = () => { setError(''); setStep(s => s - 1) }
 
-  // ── Submit ───────────────────────────────────────────────
+  // ── Submit ────────────────────────────────────────────────
   const submit = async () => {
     setSaving(true); setError('')
     try {
       const p = { ...form }
-      // Normalise weights to both units
+      // Normalise weights
       if (form.weight_unit === 'lb') {
         p.weight_lb = form.weight_lb || null
         p.weight_kg = form.weight_lb ? +(parseFloat(form.weight_lb) * 0.453592).toFixed(3) : null
@@ -122,13 +125,20 @@ export default function OrderForm({ onSubmit, onClose }) {
       })
       p.qty         = parseInt(form.qty) || 1
       p.rate_per_kg = parseFloat(form.rate_per_kg) || null
-      // Store computed price on save
+      p.eta_date    = form.eta_date || null
+
+      // Store computed price
       if (pricing) {
-        p.computed_base_price = pricing.basePrice
-        p.computed_total      = pricing.total
-        p.computed_currency   = pricing.currency
-        p.chargeable_weight_kg = pricing.weightBreakdown.chargeableKg
+        p.computed_base_price      = pricing.basePrice
+        p.computed_total           = pricing.total
+        p.computed_currency        = pricing.currency
+        p.chargeable_weight_kg     = pricing.weightBreakdown.chargeableKg
+      } else if (isFull && form.full_service_price) {
+        p.computed_base_price  = parseFloat(form.full_service_price)
+        p.computed_total       = parseFloat(form.full_service_price)
+        p.computed_currency    = form.full_service_currency
       }
+
       await onSubmit(p)
     } catch (err) {
       setError(err.message || 'Failed to save.')
@@ -140,7 +150,7 @@ export default function OrderForm({ onSubmit, onClose }) {
     <div className="overlay">
       <div className="wizard-modal">
 
-        {/* ── Header ── */}
+        {/* Header */}
         <div className="wizard-header">
           <div className="flex-between">
             <div>
@@ -156,30 +166,44 @@ export default function OrderForm({ onSubmit, onClose }) {
           </div>
         </div>
 
-        {/* ── Body ── */}
+        {/* Body */}
         <div className="wizard-body">
           {error && <div className="login-error" style={{marginBottom:16}}>{error}</div>}
 
           {/* ═══ STEP 0 — Information ═══ */}
           {step === 0 && <>
-            <div className="form-row mb-16">
-              <div className="form-group" style={{marginBottom:0}}>
-                <label className="form-label">Order Date</label>
-                <input className="form-input" type="date" value={form.order_date}
-                  onChange={e => set('order_date', e.target.value)} />
-              </div>
-              <div className="form-group" style={{marginBottom:0}}>
-                <label className="form-label">Customer Name</label>
-                <input className="form-input" type="text" placeholder="Full name"
-                  value={form.customer_name} onChange={e => set('customer_name', e.target.value)} />
-              </div>
+            {/* 1. Customer name */}
+            <div className="form-group">
+              <label className="form-label">Customer Name</label>
+              <input className="form-input" type="text" placeholder="Full name"
+                value={form.customer_name}
+                onChange={e => set('customer_name', e.target.value)} />
             </div>
 
+            {/* 2. Contact number */}
+            <div className="form-group">
+              <label className="form-label">
+                Contact Number <span className="optional">(optional)</span>
+              </label>
+              <input className="form-input" type="tel" placeholder="+62 812 3456 7890"
+                value={form.contact_number}
+                onChange={e => set('contact_number', e.target.value)} />
+            </div>
+
+            {/* 3. Order date */}
+            <div className="form-group">
+              <label className="form-label">Order Date</label>
+              <input className="form-input" type="date" value={form.order_date}
+                onChange={e => set('order_date', e.target.value)} />
+            </div>
+
+            {/* 4. Direction */}
             <div className="form-group">
               <label className="form-label">Direction</label>
               <div className="radio-group">
                 {DIRECTIONS.map(d => (
-                  <label key={d.value} className={`radio-pill ${form.direction === d.value ? 'selected' : ''}`}>
+                  <label key={d.value}
+                    className={`radio-pill ${form.direction === d.value ? 'selected' : ''}`}>
                     <input type="radio" name="direction" value={d.value}
                       checked={form.direction === d.value}
                       onChange={() => set('direction', d.value)} />
@@ -188,12 +212,25 @@ export default function OrderForm({ onSubmit, onClose }) {
                 ))}
               </div>
               {form.direction === 'other' && (
-                <input className="form-input mt-8" type="text" placeholder="Describe the route…"
+                <input className="form-input mt-8" type="text"
+                  placeholder="Describe the route…"
                   value={form.direction_other_note}
                   onChange={e => set('direction_other_note', e.target.value)} />
               )}
             </div>
 
+            {/* 5. Delivery address */}
+            <div className="form-group">
+              <label className="form-label">
+                Delivery Address <span className="optional">(optional)</span>
+              </label>
+              <textarea className="form-textarea" style={{minHeight:72}}
+                placeholder="Street, city, postal code…"
+                value={form.delivery_address}
+                onChange={e => set('delivery_address', e.target.value)} />
+            </div>
+
+            {/* Type of service */}
             <div className="form-group">
               <label className="form-label">Type of Service</label>
               <div className="radio-group">
@@ -211,7 +248,7 @@ export default function OrderForm({ onSubmit, onClose }) {
             </div>
           </>}
 
-          {/* ═══ STEP 1 — Goods, Details & Pricing ═══ */}
+          {/* ═══ STEP 1 — Goods & Pricing ═══ */}
           {step === 1 && <>
             {/* Goods description */}
             <div className="form-group">
@@ -222,26 +259,47 @@ export default function OrderForm({ onSubmit, onClose }) {
                 onChange={e => set('goods_description', e.target.value)} />
             </div>
 
-            {/* Order link — full service only */}
-            {isFullService && (
+            {/* Product / order link (full service only) */}
+            {isFull && (
               <div className="form-group">
                 <label className="form-label">
-                  Order Link <span className="optional">(optional)</span>
+                  Order / Product Link <span className="optional">(optional)</span>
                 </label>
-                <input className="form-input" type="url" placeholder="https://…"
-                  value={form.goods_link} onChange={e => set('goods_link', e.target.value)} />
-                <div className="form-hint">User can tap to open the product page directly</div>
+                <input className="form-input" type="url" placeholder="https://amazon.com/…"
+                  value={form.goods_link}
+                  onChange={e => set('goods_link', e.target.value)} />
+                <div className="form-hint">Tap to open the product page directly</div>
               </div>
             )}
+
+            {/* Shipment tracking link + ETA — shown for both service types */}
+            <div className="form-group">
+              <label className="form-label">
+                Shipment Tracking Link <span className="optional">(optional)</span>
+              </label>
+              <input className="form-input" type="url" placeholder="https://tracking.carrier.com/…"
+                value={form.order_tracking_link}
+                onChange={e => set('order_tracking_link', e.target.value)} />
+              <div className="form-hint">Customer can tap to track the package directly</div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">
+                Estimated Arrival Date <span className="optional">(optional)</span>
+              </label>
+              <input className="form-input" type="date" value={form.eta_date}
+                onChange={e => set('eta_date', e.target.value)} />
+            </div>
 
             {/* Weight unit toggle */}
             <div className="form-group">
               <label className="form-label">Unit System</label>
               <div className="radio-group">
-                {['kg', 'lb'].map(u => (
+                {['kg','lb'].map(u => (
                   <label key={u} className={`radio-pill ${form.weight_unit === u ? 'selected' : ''}`}>
                     <input type="radio" name="wu" value={u}
-                      checked={form.weight_unit === u} onChange={() => set('weight_unit', u)} />
+                      checked={form.weight_unit === u}
+                      onChange={() => set('weight_unit', u)} />
                     {u === 'kg' ? 'Metric (kg / cm)' : 'Imperial (lb / in)'}
                   </label>
                 ))}
@@ -272,11 +330,13 @@ export default function OrderForm({ onSubmit, onClose }) {
               </label>
               <div className="form-row-3">
                 {(isMetric
-                  ? [['length_cm','L (cm)'],['width_cm','W (cm)'],['height_cm','H (cm)']]
-                  : [['length_in','L (in)'],['width_in','W (in)'],['height_in','H (in)']]
+                  ? [['length_cm','L'],['width_cm','W'],['height_cm','H']]
+                  : [['length_in','L'],['width_in','W'],['height_in','H']]
                 ).map(([key, lbl]) => (
                   <div key={key}>
-                    <div className="text-sm text-muted" style={{marginBottom:4}}>{lbl}</div>
+                    <div className="text-sm text-muted" style={{marginBottom:4}}>
+                      {lbl} ({isMetric ? 'cm' : 'in'})
+                    </div>
                     <input className="form-input" type="number" min="0" step="0.1" placeholder="0"
                       value={form[key]} onChange={e => set(key, e.target.value)} />
                   </div>
@@ -287,22 +347,59 @@ export default function OrderForm({ onSubmit, onClose }) {
             {/* ── PRICING BLOCK ── */}
             <div className="pricing-block mt-16">
 
-              {/* Full service — free text notes */}
-              {isFullService && (
-                <div className="form-group" style={{marginBottom:0}}>
-                  <label className="form-label">Pricing Notes <span className="optional">(optional)</span></label>
-                  <textarea className="form-textarea" style={{minHeight:80}}
-                    placeholder="Enter pricing details, quote reference, or leave blank to fill in invoice later…"
-                    value={form.full_service_pricing_notes}
-                    onChange={e => set('full_service_pricing_notes', e.target.value)} />
-                </div>
-              )}
+              {/* FULL SERVICE — simple price entry + additional costs */}
+              {isFull && <>
+                <div className="pricing-block-title">PRICING — FULL SERVICE</div>
 
-              {/* Shipping only — calculated pricing */}
-              {isShippingOnly && (<>
-                <div className="pricing-block-title">
-                  PRICING — SHIPPING ONLY
+                <div className="form-group">
+                  <label className="form-label">
+                    Price <span className="optional">(optional — leave blank to fill at invoice)</span>
+                  </label>
+                  <div className="rate-input-row">
+                    <input className="form-input" type="number" min="0" step="0.01"
+                      placeholder="0.00"
+                      value={form.full_service_price}
+                      onChange={e => set('full_service_price', e.target.value)} />
+                    <select className="form-select" style={{width:90}}
+                      value={form.full_service_currency}
+                      onChange={e => set('full_service_currency', e.target.value)}>
+                      <option value="USD">USD</option>
+                      <option value="IDR">IDR</option>
+                    </select>
+                  </div>
                 </div>
+
+                {/* Additional costs */}
+                <div className="form-group" style={{marginBottom:0}}>
+                  <div className="flex-between" style={{marginBottom:8}}>
+                    <label className="form-label" style={{marginBottom:0}}>Additional Costs</label>
+                    <button className="btn-add-cost" onClick={addCost}>
+                      <Plus size={13} /> Add cost
+                    </button>
+                  </div>
+                  {form.additional_costs.length === 0
+                    ? <p className="text-sm text-muted">No additional costs yet.</p>
+                    : form.additional_costs.map((c, i) => (
+                      <div key={i} className="additional-cost-row">
+                        <input className="form-input" type="text" placeholder="Description"
+                          value={c.description}
+                          onChange={e => updateCost(i, 'description', e.target.value)} />
+                        <input className="form-input" type="number" min="0" step="0.01"
+                          placeholder="Amount" style={{width:110}}
+                          value={c.amount}
+                          onChange={e => updateCost(i, 'amount', e.target.value)} />
+                        <button className="btn-ghost" onClick={() => removeCost(i)}>
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ))
+                  }
+                </div>
+              </>}
+
+              {/* SHIPPING ONLY — full calculated pricing */}
+              {isShipping && <>
+                <div className="pricing-block-title">PRICING — SHIPPING ONLY</div>
 
                 {/* Volumetric divisor */}
                 <div className="form-group">
@@ -317,10 +414,10 @@ export default function OrderForm({ onSubmit, onClose }) {
                       </label>
                     ))}
                   </div>
-                  <div className="form-hint">5000 = standard air; 6000 = some courier/sea rates</div>
+                  <div className="form-hint">5000 = standard air · 6000 = sea / some couriers</div>
                 </div>
 
-                {/* Weight comparison */}
+                {/* Weight breakdown */}
                 {pricing?.weightBreakdown && (
                   <div className="weight-compare">
                     <div className="weight-compare-row">
@@ -336,11 +433,8 @@ export default function OrderForm({ onSubmit, onClose }) {
                     <div className="weight-compare-row chargeable">
                       <span>
                         Chargeable weight
-                        {pricing.weightBreakdown.usedVolumetric
-                          ? ' (volumetric wins)'
-                          : pricing.weightBreakdown.volumetricKg !== null
-                            ? ' (actual wins)'
-                            : ''}
+                        {pricing.weightBreakdown.usedVolumetric ? ' (volumetric wins)'
+                          : pricing.weightBreakdown.volumetricKg !== null ? ' (actual wins)' : ''}
                       </span>
                       <span>{pricing.weightBreakdown.chargeableKg} kg</span>
                     </div>
@@ -372,7 +466,6 @@ export default function OrderForm({ onSubmit, onClose }) {
                       <Plus size={13} /> Add cost
                     </button>
                   </div>
-
                   {form.additional_costs.length === 0
                     ? <p className="text-sm text-muted">No additional costs yet.</p>
                     : form.additional_costs.map((c, i) => (
@@ -396,7 +489,10 @@ export default function OrderForm({ onSubmit, onClose }) {
                 {pricing && (
                   <div className="pricing-summary">
                     <div className="pricing-summary-row">
-                      <span>Weight charge ({pricing.weightBreakdown.chargeableKg} kg × {formatCurrency(parseFloat(form.rate_per_kg)||0, form.rate_currency)}/kg)</span>
+                      <span>
+                        Weight charge ({pricing.weightBreakdown.chargeableKg} kg ×{' '}
+                        {formatCurrency(parseFloat(form.rate_per_kg) || 0, form.rate_currency)}/kg)
+                      </span>
                       <span>{formatCurrency(pricing.basePrice, pricing.currency)}</span>
                     </div>
                     {pricing.additionalTotal > 0 && (
@@ -411,12 +507,39 @@ export default function OrderForm({ onSubmit, onClose }) {
                     </div>
                   </div>
                 )}
-              </>)}
+              </>}
             </div>
           </>}
 
           {/* ═══ STEP 2 — Additional Notes ═══ */}
-          {step === 2 && (
+          {step === 2 && <>
+            {/* Show tracking link + ETA as read-only preview if filled */}
+            {(form.order_tracking_link || form.eta_date) && (
+              <div style={{
+                background:'var(--navy-pale)', border:'1px solid var(--gray-200)',
+                borderRadius:'var(--r-md)', padding:'12px 14px', marginBottom:18
+              }}>
+                {form.order_tracking_link && (
+                  <div className="flex-center gap-8 text-sm" style={{marginBottom: form.eta_date ? 6 : 0}}>
+                    <span className="text-muted">Tracking link:</span>
+                    <a href={form.order_tracking_link} target="_blank" rel="noreferrer"
+                      className="flex-center gap-4" style={{color:'var(--blue)', fontWeight:600}}>
+                      Open link <ExternalLink size={11} />
+                    </a>
+                  </div>
+                )}
+                {form.eta_date && (
+                  <div className="flex-center gap-8 text-sm">
+                    <span className="text-muted">Estimated arrival:</span>
+                    <span style={{fontWeight:600}}>
+                      {new Date(form.eta_date).toLocaleDateString('en-GB',
+                        {day:'2-digit', month:'long', year:'numeric'})}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="form-group">
               <label className="form-label">
                 Additional Notes <span className="optional">(optional)</span>
@@ -426,10 +549,10 @@ export default function OrderForm({ onSubmit, onClose }) {
                 value={form.additional_notes}
                 onChange={e => set('additional_notes', e.target.value)} />
             </div>
-          )}
+          </>}
         </div>
 
-        {/* ── Footer ── */}
+        {/* Footer */}
         <div className="wizard-footer">
           <button className="btn btn-outline" onClick={step === 0 ? onClose : back}>
             {step === 0 ? 'Cancel' : '← Back'}
