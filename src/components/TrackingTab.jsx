@@ -1,26 +1,119 @@
 // src/components/TrackingTab.jsx
-import { useState } from 'react'
-import { Truck, ChevronRight, Check, ExternalLink } from 'lucide-react'
-import { getStageLabel, getStageSequence } from '../lib/data'
+// Design: matches JEI Shipments tab — KPI cards, stage filter chips,
+// per-card checkpoint timeline, payment segment, 3-leg tracking numbers
+import { useState, useMemo } from 'react'
+import { Truck, Check, ExternalLink, Plus, Search } from 'lucide-react'
+import { getStageLabel, getStageSequence, isFinalStage } from '../lib/data'
+
+// Stage filter options — All + each stage label
+const STAGE_FILTER_FULL     = ['All', 'Ordered', 'Arrived at warehouse', 'Sent to destination', 'Received at destination', 'Sent to customer', 'Received by customer']
+const STAGE_FILTER_LABELS   = {
+  1: 'Ordered', 2: 'Arrived at warehouse', 3: 'Sent to destination',
+  4: 'Received at destination', 5: 'Sent to customer', 6: 'Received by customer'
+}
+const PAYMENT_STATES = ['Unpaid', 'Invoiced', 'Paid']
+
+// Inline tracking leg editor
+function TrackingLeg({ label, carrier, number, carriers, onSave }) {
+  const [editing, setEditing] = useState(false)
+  const [num, setNum]         = useState(number || '')
+  const [car, setCar]         = useState(carrier || '')
+
+  const save = () => { onSave(car, num); setEditing(false) }
+
+  const trackUrl = () => {
+    const c = carriers.find(c => c.name === car)
+    if (!c || !num) return null
+    return c.tracking_url_template.replace('{tracking_number}', encodeURIComponent(num))
+  }
+  const url = trackUrl()
+
+  return (
+    <div className="tracking-leg">
+      <div className="tracking-leg-label">{label}</div>
+      {editing ? (
+        <div style={{display:'flex', flexDirection:'column', gap:6}}>
+          <select className="form-select" value={car} onChange={e => setCar(e.target.value)}>
+            <option value="">— Carrier —</option>
+            {carriers.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+          </select>
+          <input className="form-input" type="text" placeholder="Tracking number"
+            value={num} onChange={e => setNum(e.target.value)} />
+          <div className="flex-center gap-6">
+            <button className="btn btn-primary btn-sm" onClick={save}>Save</button>
+            <button className="btn btn-outline btn-sm" onClick={() => setEditing(false)}>Cancel</button>
+          </div>
+        </div>
+      ) : (
+        <button className="tracking-leg-add" onClick={() => setEditing(true)}>
+          {number ? (
+            <span className="flex-center gap-6">
+              {car && <span className="text-muted text-sm">{car}</span>}
+              {url
+                ? <a href={url} target="_blank" rel="noreferrer"
+                    className="tracking-num flex-center gap-4" onClick={e => e.stopPropagation()}>
+                    {number} <ExternalLink size={10} />
+                  </a>
+                : <span className="tracking-num">{number}</span>
+              }
+            </span>
+          ) : (
+            <span className="flex-center gap-6 text-muted text-sm">
+              <Plus size={12} /> Add number
+            </span>
+          )}
+        </button>
+      )}
+    </div>
+  )
+}
 
 export default function TrackingTab({ orders, tracking, carriers, updateTracking, advanceStage }) {
-  const [editId, setEditId]       = useState(null)
-  const [tNum, setTNum]           = useState('')
-  const [cId, setCId]             = useState('')
-  const [advancing, setAdvancing] = useState(null)
+  const [stageFilter, setStageFilter] = useState('All')
+  const [search, setSearch]           = useState('')
+  const [advancing, setAdvancing]     = useState(null)
+  const [savingPay, setSavingPay]     = useState(null)
 
-  const getT   = (oid) => tracking.find(t => t.order_id === oid)
-  const getCar = (cid) => carriers.find(c => c.id === cid)
+  const getT = (oid) => tracking.find(t => t.order_id === oid)
 
-  const trackUrl = (carrier, num) => {
-    if (!carrier || !num) return null
-    return carrier.tracking_url_template.replace('{tracking_number}', encodeURIComponent(num))
-  }
+  // KPIs
+  const total      = orders.length
+  const inTransit  = orders.filter(o => { const t = getT(o.id); return t && !isFinalStage(o, t) }).length
+  const delUnpaid  = orders.filter(o => {
+    const t = getT(o.id)
+    return t && isFinalStage(o, t) && (t.payment || 'Unpaid') === 'Unpaid'
+  }).length
+  const paid       = orders.filter(o => {
+    const t = getT(o.id); return t && (t.payment || '') === 'Paid'
+  }).length
 
-  const saveTracking = async (orderId) => {
-    await updateTracking(orderId, { tracking_number: tNum || null, carrier_id: cId || null })
-    setEditId(null)
-  }
+  // Stage filter counts
+  const stageCounts = useMemo(() => {
+    const counts = { All: orders.length }
+    orders.forEach(o => {
+      const t = getT(o.id)
+      if (t) {
+        const lbl = STAGE_FILTER_LABELS[t.current_stage]
+        if (lbl) counts[lbl] = (counts[lbl] || 0) + 1
+      }
+    })
+    return counts
+  }, [orders, tracking])
+
+  // Filtered list
+  const filtered = useMemo(() => {
+    return orders.filter(o => {
+      const t = getT(o.id); if (!t) return false
+      const lbl = STAGE_FILTER_LABELS[t.current_stage]
+      if (stageFilter !== 'All' && lbl !== stageFilter) return false
+      if (search.trim()) {
+        const q = search.toLowerCase()
+        return (o.customer_name || '').toLowerCase().includes(q) ||
+               (t.tracking_number || '').toLowerCase().includes(q)
+      }
+      return true
+    })
+  }, [orders, tracking, stageFilter, search])
 
   const advance = async (order, stage) => {
     const seq = getStageSequence(order.service_type)
@@ -31,134 +124,169 @@ export default function TrackingTab({ orders, tracking, carriers, updateTracking
     finally { setAdvancing(null) }
   }
 
+  const setPayment = async (orderId, payment) => {
+    setSavingPay(orderId)
+    try { await updateTracking(orderId, { payment }) }
+    finally { setSavingPay(null) }
+  }
+
+  const saveLeg = async (orderId, legKey, carKey, carrier, number) => {
+    await updateTracking(orderId, { [legKey]: number || null, [carKey]: carrier || null })
+  }
+
   return (
     <div>
-      <div className="page-header">
-        <h2>Tracking</h2>
-        <p>Advance shipment stages and manage tracking numbers</p>
+      {/* KPI cards — matches JEI Shipments KPIs */}
+      <div className="kpi-grid kpi-grid-4">
+        <div className="kpi-card">
+          <div className="kpi-label">TOTAL SHIPMENTS</div>
+          <div className="kpi-value">{total}</div>
+          <div className="kpi-sub">with orders</div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-label">IN TRANSIT</div>
+          <div className="kpi-value">{inTransit}</div>
+          <div className="kpi-sub">not yet delivered</div>
+        </div>
+        <div className={`kpi-card ${delUnpaid > 0 ? 'kpi-card-warn' : ''}`}>
+          <div className="kpi-label">DELIVERED, UNPAID</div>
+          <div className={`kpi-value ${delUnpaid > 0 ? 'kpi-value-warn' : ''}`}>{delUnpaid}</div>
+          <div className="kpi-sub">money owed</div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-label">PAID</div>
+          <div className="kpi-value">{paid}</div>
+          <div className="kpi-sub">settled</div>
+        </div>
       </div>
 
-      {orders.length === 0 ? (
+      {/* Stage filter chips */}
+      <div className="stage-filter-row">
+        {STAGE_FILTER_FULL.map(lbl => (
+          <button key={lbl}
+            className={`stage-filter-chip ${stageFilter === lbl ? 'active' : ''}`}
+            onClick={() => setStageFilter(stageFilter === lbl && lbl !== 'All' ? 'All' : lbl)}>
+            {lbl}
+            <span className="stage-filter-count">{stageCounts[lbl] || 0}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Search */}
+      <div className="search-wrap" style={{marginBottom:16, maxWidth:400}}>
+        <Search size={15} className="search-icon" />
+        <input className="search-input" type="text"
+          placeholder="Search shipments…"
+          value={search} onChange={e => setSearch(e.target.value)} />
+      </div>
+
+      {/* Shipment cards */}
+      {filtered.length === 0 ? (
         <div className="card">
           <div className="empty-state">
             <div className="empty-icon"><Truck size={26} /></div>
-            <h3>No shipments to track</h3>
-            <p>Orders will appear here once created.</p>
+            <h3>No shipments</h3>
+            <p>{search || stageFilter !== 'All' ? 'Try clearing filters.' : 'Orders will appear here once created.'}</p>
           </div>
         </div>
       ) : (
-        <div style={{display:'flex', flexDirection:'column', gap:14}}>
-          {orders.map(order => {
-            const t       = getT(order.id)
+        <div style={{display:'flex', flexDirection:'column', gap:12}}>
+          {filtered.map(order => {
+            const t      = getT(order.id)
             if (!t) return null
-            const seq     = getStageSequence(order.service_type)
-            const stage   = t.current_stage
-            const carrier = getCar(t.carrier_id)
-            const url     = trackUrl(carrier, t.tracking_number)
-            const isLast  = seq.indexOf(stage) === seq.length - 1
-            const isEdit  = editId === order.id
+            const seq    = getStageSequence(order.service_type)
+            const stage  = t.current_stage
+            const isLast = isFinalStage(order, t)
+            const pay    = t.payment || 'Unpaid'
+            const carrier = carriers.find(c => c.id === t.carrier_id)
+            const stageUpdated = t.stage_history?.slice(-1)[0]?.timestamp
 
             return (
-              <div className="card" key={order.id}>
-                <div className="card-header">
+              <div className="card ship-card" key={order.id}>
+                {/* Card header */}
+                <div className="ship-card-header">
                   <div className="flex-center gap-12">
-                    <span className="fw-700 text-navy font-brand" style={{fontSize:15}}>{order.customer_name}</span>
-                    <span className="text-sm text-muted">
-                      {new Date(order.order_date).toLocaleDateString('en-GB',{day:'2-digit',month:'short'})}
-                    </span>
-                    <span className={`badge ${order.service_type === 'full_service' ? 'badge-navy' : 'badge-gray'}`}>
-                      {order.service_type === 'full_service' ? 'Full Service' : 'Shipping Only'}
-                    </span>
+                    <span className="ship-id">ORD-{order.id?.substring(0,6).toUpperCase()}</span>
+                    {carrier && <span className="text-sm text-muted">{carrier.name}</span>}
+                    {order.vol_divisor && <span className="text-sm text-muted">+{order.vol_divisor}</span>}
+                    <span className={`pay-badge pay-${pay.toLowerCase()}`}>{pay}</span>
                   </div>
-                  <div className="flex-center gap-8">
-                    {isLast
-                      ? <span className="badge badge-green"><Check size={11} style={{marginRight:3}} />Delivered</span>
-                      : <button className="btn btn-gold btn-sm" disabled={advancing === order.id}
-                          onClick={() => advance(order, stage)}>
-                          {advancing === order.id ? '…' : <><ChevronRight size={13} /> Advance Stage</>}
-                        </button>
-                    }
+                  <div className="flex-center gap-12">
+                    <span className="text-sm text-muted">1 order: {order.customer_name}</span>
+                    {stageUpdated && (
+                      <span className="text-sm text-muted">
+                        Stage updated {new Date(stageUpdated).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}
+                      </span>
+                    )}
                   </div>
                 </div>
 
-                <div className="card-body">
-                  {/* Stage tracker */}
-                  <div className="stage-track" style={{marginBottom:22}}>
+                <div className="ship-card-body">
+                  {/* Checkpoint timeline — matches JEI pill buttons */}
+                  <div className="checkpoint-row">
                     {seq.map(s => {
                       const done   = stage > s
                       const active = stage === s
                       return (
-                        <div key={s} className={`stage-item ${done ? 'done' : ''}`}>
-                          <div className={`stage-dot ${done ? 'done' : active ? 'active' : ''}`}>
-                            {done ? <Check size={10} /> : s}
-                          </div>
-                          <div className={`stage-lbl ${done ? 'done' : active ? 'active' : ''}`}>
-                            {getStageLabel(order.service_type, s)}
-                          </div>
-                        </div>
+                        <button key={s}
+                          className={`checkpoint ${done ? 'cp-done' : active ? 'cp-active' : 'cp-future'}`}
+                          onClick={() => !done && !active && advance(order, stage)}
+                          disabled={advancing === order.id || done}>
+                          {done && <Check size={11} style={{marginRight:4}} />}
+                          {getStageLabel(order.service_type, s)}
+                        </button>
                       )
                     })}
                   </div>
 
-                  {/* Tracking number */}
-                  {isEdit ? (
-                    <div style={{display:'flex', gap:8, flexWrap:'wrap', alignItems:'flex-end'}}>
-                      <div style={{flex:1, minWidth:130}}>
-                        <div className="form-label" style={{marginBottom:4}}>Carrier</div>
-                        <select className="form-select" value={cId} onChange={e => setCId(e.target.value)}>
-                          <option value="">— Select —</option>
-                          {carriers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                        </select>
-                      </div>
-                      <div style={{flex:2, minWidth:160}}>
-                        <div className="form-label" style={{marginBottom:4}}>Tracking Number</div>
-                        <input className="form-input" type="text" placeholder="e.g. 1Z999AA10123456784"
-                          value={tNum} onChange={e => setTNum(e.target.value)} />
-                      </div>
-                      <button className="btn btn-primary btn-sm" onClick={() => saveTracking(order.id)}>Save</button>
-                      <button className="btn btn-outline btn-sm" onClick={() => setEditId(null)}>Cancel</button>
-                    </div>
-                  ) : (
-                    <div className="flex-between">
-                      <div>
-                        {t.tracking_number ? (
-                          <span className="flex-center gap-6">
-                            <span className="text-sm text-muted">{carrier?.name || 'Carrier'}:</span>
-                            {url
-                              ? <a href={url} target="_blank" rel="noreferrer"
-                                  className="tracking-num flex-center gap-6">
-                                  {t.tracking_number} <ExternalLink size={11} />
-                                </a>
-                              : <span className="tracking-num">{t.tracking_number}</span>
-                            }
-                          </span>
-                        ) : (
-                          <span className="text-sm text-muted">No tracking number added yet</span>
-                        )}
-                      </div>
-                      <button className="btn btn-outline btn-sm"
-                        onClick={() => { setEditId(order.id); setTNum(t.tracking_number || ''); setCId(t.carrier_id || '') }}>
-                        {t.tracking_number ? 'Edit' : '+ Add Tracking'}
-                      </button>
-                    </div>
-                  )}
-
-                  {/* History */}
-                  {t.stage_history?.length > 1 && (
-                    <div style={{marginTop:16}}>
-                      <div className="text-sm text-muted fw-700" style={{marginBottom:6}}>Stage History</div>
-                      {[...t.stage_history].reverse().map((h, i) => (
-                        <div key={i} className="flex-center gap-12 text-sm"
-                          style={{padding:'5px 0', borderBottom:'1px solid var(--gray-100)'}}>
-                          <span className="text-muted text-mono" style={{minWidth:120}}>
-                            {new Date(h.timestamp).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}
-                          </span>
-                          <span>{getStageLabel(order.service_type, h.stage)}</span>
-                          {h.note && <span className="text-muted">— {h.note}</span>}
-                        </div>
+                  {/* Payment row */}
+                  <div className="pay-row">
+                    <span className="flex-center gap-6 text-sm text-muted">
+                      🗂 Payment · {t.payment_updated_at
+                        ? `updated ${new Date(t.payment_updated_at).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}`
+                        : 'not set'}
+                    </span>
+                    <div className="pay-seg">
+                      {PAYMENT_STATES.map(p => (
+                        <button key={p}
+                          className={`pay-seg-btn ${pay === p ? 'pay-seg-active' : ''}`}
+                          disabled={savingPay === order.id}
+                          onClick={() => setPayment(order.id, p)}>
+                          {p}
+                        </button>
                       ))}
                     </div>
-                  )}
+                  </div>
+
+                  {/* Tracking legs — 3 legs matching JEI */}
+                  <div className="tracking-legs-row">
+                    <div className="tracking-legs-label text-sm text-muted">
+                      🚚 Tracking
+                    </div>
+                    <div className="tracking-legs-grid">
+                      <TrackingLeg
+                        label="US → SG"
+                        carrier={t.track_us_sg_carrier}
+                        number={t.track_us_sg}
+                        carriers={carriers}
+                        onSave={(car, num) => saveLeg(order.id, 'track_us_sg', 'track_us_sg_carrier', car, num)}
+                      />
+                      <TrackingLeg
+                        label="SG → ID"
+                        carrier={t.track_sg_id_carrier}
+                        number={t.track_sg_id}
+                        carriers={carriers}
+                        onSave={(car, num) => saveLeg(order.id, 'track_sg_id', 'track_sg_id_carrier', car, num)}
+                      />
+                      <TrackingLeg
+                        label="ID → Customer"
+                        carrier={t.track_id_cust_carrier}
+                        number={t.track_id_cust}
+                        carriers={carriers}
+                        onSave={(car, num) => saveLeg(order.id, 'track_id_cust', 'track_id_cust_carrier', car, num)}
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             )

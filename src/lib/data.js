@@ -161,7 +161,7 @@ export function useAppData() {
   }, [invoices, upsertInvoice])
 
   // Update base price on invoice (called when completing to lock computed total)
-  const lockInvoiceTotal = useCallback(async (orderId, total, currency) => {
+  const lockInvoiceTotal = useCallback(async (orderId, total, currency, usdRate = null, sgdRate = null) => {
     const invoice  = invoices.find(inv => inv.order_id === orderId)
     const extras   = invoice?.additional_costs || []
     const extraAmt = extras.reduce((s, c) => s + Number(c.amount), 0)
@@ -170,6 +170,8 @@ export function useAppData() {
       additional_costs: extras,
       total,
       currency,
+      ...(usdRate != null ? { usd_rate: usdRate } : {}),
+      ...(sgdRate != null ? { sgd_rate: sgdRate } : {}),
     })
   }, [invoices, upsertInvoice])
 
