@@ -385,9 +385,15 @@ export default function OrderForm({ onSubmit, onClose }) {
                           value={c.description}
                           onChange={e => updateCost(i, 'description', e.target.value)} />
                         <input className="form-input" type="number" min="0" step="0.01"
-                          placeholder="Amount" style={{width:110}}
+                          placeholder="Amount" style={{width:100}}
                           value={c.amount}
                           onChange={e => updateCost(i, 'amount', e.target.value)} />
+                        <select className="form-select" style={{width:76}}
+                          value={c.currency || 'USD'}
+                          onChange={e => updateCost(i, 'currency', e.target.value)}>
+                          <option value="USD">USD</option>
+                          <option value="IDR">IDR</option>
+                        </select>
                         <button className="btn-ghost" onClick={() => removeCost(i)}>
                           <Trash2 size={14} />
                         </button>
@@ -474,9 +480,15 @@ export default function OrderForm({ onSubmit, onClose }) {
                           value={c.description}
                           onChange={e => updateCost(i, 'description', e.target.value)} />
                         <input className="form-input" type="number" min="0" step="0.01"
-                          placeholder="Amount" style={{width:110}}
+                          placeholder="Amount" style={{width:100}}
                           value={c.amount}
                           onChange={e => updateCost(i, 'amount', e.target.value)} />
+                        <select className="form-select" style={{width:76}}
+                          value={c.currency || 'USD'}
+                          onChange={e => updateCost(i, 'currency', e.target.value)}>
+                          <option value="USD">USD</option>
+                          <option value="IDR">IDR</option>
+                        </select>
                         <button className="btn-ghost" onClick={() => removeCost(i)}>
                           <Trash2 size={14} />
                         </button>
