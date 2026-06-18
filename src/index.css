@@ -890,3 +890,28 @@ hr { border: none; border-top: 1px solid var(--gray-100); margin: 16px 0; }
   font-size: 10px; font-weight: 700;
   color: var(--gray-400); text-transform: uppercase; letter-spacing: 0.08em;
 }
+
+/* ── Customer autofill dropdown ──────────────────────────── */
+.autofill-dropdown {
+  position: absolute; top: 100%; left: 0; right: 0;
+  background: var(--white);
+  border: 1.5px solid var(--navy);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-md);
+  z-index: 200;
+  overflow: hidden;
+  margin-top: 2px;
+}
+.autofill-item {
+  width: 100%; text-align: left;
+  padding: 10px 14px;
+  display: flex; align-items: flex-start; gap: 10px;
+  background: none; border: none; cursor: pointer;
+  border-bottom: 1px solid var(--gray-100);
+  transition: background 0.1s;
+}
+.autofill-item:last-child { border-bottom: none; }
+.autofill-item:hover { background: var(--navy-pale); }
+
+/* ── Customer form inline ────────────────────────────────── */
+.customer-form-inline { padding: 0; }

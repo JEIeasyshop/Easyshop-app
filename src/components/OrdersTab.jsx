@@ -52,7 +52,7 @@ function exportCSV(orders, tracking) {
   a.click(); URL.revokeObjectURL(url)
 }
 
-export default function OrdersTab({ orders, tracking, addOrder }) {
+export default function OrdersTab({ orders, tracking, addOrder, customers = [] }) {
   const [showForm, setShowForm] = useState(false)
   const [search, setSearch]     = useState('')
 
@@ -192,6 +192,7 @@ export default function OrdersTab({ orders, tracking, addOrder }) {
 
       {showForm && (
         <OrderForm
+          customers={customers}
           onSubmit={async (data) => { await addOrder(data); setShowForm(false) }}
           onClose={() => setShowForm(false)}
         />

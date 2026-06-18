@@ -33,6 +33,7 @@ export function useAppData() {
   const [invoices, setInvoices]         = useState([])
   const [completedOrders, setCompleted] = useState([])
   const [carriers, setCarriers]         = useState([])
+  const [customers, setCustomers]       = useState([])
   const [loading, setLoading]           = useState(true)
   const [error, setError]               = useState(null)
 
@@ -40,24 +41,27 @@ export function useAppData() {
   const reload = useCallback(async () => {
     setLoading(true); setError(null)
     try {
-      const [o, t, inv, c, car] = await Promise.all([
+      const [o, t, inv, c, car, cust] = await Promise.all([
         supabase.from('orders').select('*').order('order_date', { ascending: false }),
         supabase.from('tracking_status').select('*'),
         supabase.from('invoices').select('*'),
         supabase.from('completed_orders').select('*').order('completed_at', { ascending: false }),
         supabase.from('carriers').select('*').eq('active', true),
+        supabase.from('customers').select('*').order('name'),
       ])
-      if (o.error)   throw o.error
-      if (t.error)   throw t.error
-      if (inv.error) throw inv.error
-      if (c.error)   throw c.error
-      if (car.error) throw car.error
+      if (o.error)    throw o.error
+      if (t.error)    throw t.error
+      if (inv.error)  throw inv.error
+      if (c.error)    throw c.error
+      if (car.error)  throw car.error
+      if (cust.error) throw cust.error
 
-      setOrders(o.data     || [])
-      setTracking(t.data   || [])
-      setInvoices(inv.data || [])
-      setCompleted(c.data  || [])
-      setCarriers(car.data || [])
+      setOrders(o.data      || [])
+      setTracking(t.data    || [])
+      setInvoices(inv.data  || [])
+      setCompleted(c.data   || [])
+      setCarriers(car.data  || [])
+      setCustomers(cust.data || [])
     } catch (err) {
       console.error('useAppData reload:', err)
       setError(err)
@@ -246,9 +250,31 @@ export function useAppData() {
     await reload()
   }, [reload])
 
+  // ── CUSTOMERS ─────────────────────────────────────────────
+  const addCustomer = useCallback(async (customerData) => {
+    const { data, error } = await supabase.from('customers')
+      .insert(customerData).select().single()
+    if (error) throw error
+    setCustomers(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
+    return data
+  }, [])
+
+  const updateCustomer = useCallback(async (id, updates) => {
+    const { error } = await supabase.from('customers')
+      .update({ ...updates, updated_at: new Date().toISOString() }).eq('id', id)
+    if (error) throw error
+    setCustomers(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c))
+  }, [])
+
+  const deleteCustomer = useCallback(async (id) => {
+    const { error } = await supabase.from('customers').delete().eq('id', id)
+    if (error) throw error
+    setCustomers(prev => prev.filter(c => c.id !== id))
+  }, [])
+
   return {
     // Data
-    orders, tracking, invoices, completedOrders, carriers,
+    orders, tracking, invoices, completedOrders, carriers, customers,
     loading, error,
     // Core
     reload, patchOrder, patchInvoice,
@@ -260,5 +286,7 @@ export function useAppData() {
     upsertInvoice, addInvoiceCost, lockInvoiceTotal,
     // Complete / archive
     completeOrder, revertCompleted, deleteCompleted, cleanupExpired,
+    // Customers
+    addCustomer, updateCustomer, deleteCustomer,
   }
 }

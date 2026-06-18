@@ -1,6 +1,6 @@
 // src/components/OrderForm.jsx
 import { useState, useMemo } from 'react'
-import { X, Plus, Trash2, ExternalLink } from 'lucide-react'
+import { X, Plus, Trash2, ExternalLink, UserCheck } from 'lucide-react'
 import { chargeableWeight, calcShippingOnly, formatCurrency } from '../lib/pricing'
 
 const DIRECTIONS = [
@@ -47,7 +47,7 @@ const emptyForm = {
   additional_notes:     '',
 }
 
-export default function OrderForm({ onSubmit, onClose }) {
+export default function OrderForm({ onSubmit, onClose, customers = [] }) {
   const [step, setStep]     = useState(0)
   const [form, setForm]     = useState(emptyForm)
   const [saving, setSaving] = useState(false)
@@ -57,6 +57,25 @@ export default function OrderForm({ onSubmit, onClose }) {
   const isMetric   = form.weight_unit === 'kg'
   const isFull     = form.service_type === 'full_service'
   const isShipping = form.service_type === 'shipping_only'
+
+  // Autofill from customer record
+  const autofill = (customer) => {
+    setForm(f => ({
+      ...f,
+      customer_name:    customer.name,
+      contact_number:   customer.contact_number || '',
+      delivery_address: customer.address        || '',
+    }))
+  }
+
+  // Filtered customer suggestions while typing name
+  const suggestions = useMemo(() => {
+    const q = form.customer_name.trim().toLowerCase()
+    if (!q || q.length < 1) return []
+    return customers
+      .filter(c => c.name.toLowerCase().includes(q))
+      .slice(0, 5)
+  }, [form.customer_name, customers])
 
   // ── Live pricing (shipping only) ─────────────────────────
   const pricing = useMemo(() => {
@@ -172,12 +191,29 @@ export default function OrderForm({ onSubmit, onClose }) {
 
           {/* ═══ STEP 0 — Information ═══ */}
           {step === 0 && <>
-            {/* 1. Customer name */}
-            <div className="form-group">
+            {/* 1. Customer name with autofill */}
+            <div className="form-group" style={{position:'relative'}}>
               <label className="form-label">Customer Name</label>
-              <input className="form-input" type="text" placeholder="Full name"
+              <input className="form-input" type="text" placeholder="Full name or search existing…"
                 value={form.customer_name}
-                onChange={e => set('customer_name', e.target.value)} />
+                onChange={e => set('customer_name', e.target.value)}
+                autoComplete="off" />
+              {/* Autofill dropdown */}
+              {suggestions.length > 0 && (
+                <div className="autofill-dropdown">
+                  {suggestions.map(c => (
+                    <button key={c.id} className="autofill-item"
+                      onClick={() => autofill(c)}>
+                      <UserCheck size={13} style={{color:'var(--gold)', flexShrink:0}} />
+                      <div>
+                        <div style={{fontWeight:600, fontSize:13}}>{c.name}</div>
+                        {c.contact_number && <div className="text-sm text-muted">{c.contact_number}</div>}
+                        {c.address && <div className="text-sm text-muted ellipsis" style={{maxWidth:300}}>{c.address}</div>}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* 2. Contact number */}
