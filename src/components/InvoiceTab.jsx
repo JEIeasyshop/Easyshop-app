@@ -1,6 +1,6 @@
 // src/components/InvoiceTab.jsx
 import { useState, useMemo } from 'react'
-import { FileText, Printer, CheckCircle, Plus, X, Search } from 'lucide-react'
+import { FileText, Printer, CheckCircle, Plus, X, Search, Trash2 } from 'lucide-react'
 import { getStageSequence, isFinalStage, getStageLabel } from '../lib/data'
 import { formatCurrency } from '../lib/pricing'
 import { generateInvoicePDF } from '../lib/pdf'
@@ -28,7 +28,7 @@ const STATUS_CONFIG = {
 
 export default function InvoiceTab({
   orders, tracking, invoices,
-  addInvoiceCost, lockInvoiceTotal, completeOrder,
+  addInvoiceCost, removeInvoiceCost, lockInvoiceTotal, completeOrder,
 }) {
   const [selectedId, setSelectedId]   = useState(null)
   const [confirmId, setConfirmId]     = useState(null)
@@ -215,19 +215,21 @@ export default function InvoiceTab({
               <div key={order.id}
                 className={`inv-row ${isSel ? 'inv-row-active' : ''}`}
                 onClick={() => selectOrder(order.id)}>
-                <div className="flex-center gap-10" style={{overflow:'hidden'}}>
-                  <FileText size={14} style={{color:'var(--navy)', opacity:0.6, flexShrink:0}} />
-                  <span className="text-mono text-sm fw-700" style={{color:'var(--navy)', flexShrink:0}}>
+                <div style={{display:'grid', gridTemplateColumns:'auto auto 1fr', alignItems:'center', gap:10, overflow:'hidden', minWidth:0}}>
+                  <FileText size={14} style={{color:'var(--navy)', opacity:0.6}} />
+                  <span className="text-mono text-sm fw-700" style={{color:'var(--navy)', whiteSpace:'nowrap'}}>
                     ORD-{order.id?.substring(0,6).toUpperCase()}
                   </span>
-                  <span style={{fontWeight:700, flexShrink:0}}>{order.customer_name}</span>
-                  <span className="text-muted text-sm" style={{overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
-                    {DIR_LABEL[order.direction] || order.direction_other_note || 'Other'}
-                    {order.goods_description ? ` · ${order.goods_description}` : ''}
+                  <span style={{fontWeight:700, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>
+                    {order.customer_name}
+                    <span className="text-muted" style={{fontWeight:400, marginLeft:8}}>
+                      {DIR_LABEL[order.direction] || order.direction_other_note || 'Other'}
+                      {order.goods_description ? ` · ${order.goods_description}` : ''}
+                    </span>
                   </span>
                 </div>
-                <div className="flex-center gap-8" style={{flexShrink:0}}>
-                  <span className={`badge ${sCfg.cls}`}>{sCfg.label}</span>
+                <div className="flex-center gap-8" style={{flexShrink:0, marginLeft:12}}>
+                  <span className={`badge ${sCfg.cls}`} style={{whiteSpace:'nowrap'}}>{sCfg.label}</span>
                   {payBadge(tRow)}
                   <span style={{fontWeight:700, fontSize:14, whiteSpace:'nowrap'}}>
                     Rp {Math.round(totalIDR).toLocaleString('id-ID')}
@@ -300,35 +302,54 @@ export default function InvoiceTab({
               <table style={{width:'100%', borderCollapse:'collapse', marginBottom:16}}>
                 <thead>
                   <tr>
-                    {['Description','Qty','Unit Price','Total','In IDR'].map(h => (
-                      <th key={h} style={{textAlign: h === 'Description' ? 'left' : 'right',
+                    {['Description','Qty','Unit Price','Total','In IDR',''].map((h, hi) => (
+                      <th key={h+hi} style={{textAlign: h === 'Description' ? 'left' : 'right',
                         padding:'8px 0', fontSize:11, color:'var(--gray-400)',
                         textTransform:'uppercase', letterSpacing:'0.07em',
-                        borderBottom:'1px solid var(--gray-200)'}}>
-                        {h === 'Description' ? h : <span style={{float:'right'}}>{h}</span>}
+                        borderBottom:'1px solid var(--gray-200)', width: h === '' ? 28 : undefined}}>
+                        {h}
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {lines.length === 0 ? (
-                    <tr><td colSpan={5} style={{padding:'12px 0', color:'var(--gray-400)', fontSize:13}}>
+                    <tr><td colSpan={6} style={{padding:'12px 0', color:'var(--gray-400)', fontSize:13}}>
                       No pricing set — add a cost line below.
                     </td></tr>
-                  ) : lines.map((l, i) => {
-                    const lineTotal = l.amount * (l.qty || 1)
-                    return (
-                      <tr key={i}>
-                        <td style={{padding:'10px 0', fontSize:13, borderBottom:'1px solid var(--gray-100)'}}>{l.label}</td>
-                        <td style={{textAlign:'right', padding:'10px 0', fontSize:13, borderBottom:'1px solid var(--gray-100)', color:'var(--gray-400)'}}>{l.qty || 1}</td>
-                        <td style={{textAlign:'right', padding:'10px 0', fontSize:13, borderBottom:'1px solid var(--gray-100)'}}>{formatCurrency(l.amount, l.currency)}</td>
-                        <td style={{textAlign:'right', padding:'10px 0', fontSize:13, fontWeight:600, borderBottom:'1px solid var(--gray-100)'}}>{formatCurrency(lineTotal, l.currency)}</td>
-                        <td style={{textAlign:'right', padding:'10px 0', fontSize:13, fontWeight:700, color:'var(--navy)', borderBottom:'1px solid var(--gray-100)'}}>
-                          Rp {Math.round(toIDR(lineTotal, l.currency, effU, effS)).toLocaleString('id-ID')}
-                        </td>
-                      </tr>
+                  ) : (() => {
+                    // Count how many lines come from order (not deletable) vs invoice (deletable)
+                    const orderLineCount = (
+                      (selected.service_type === 'shipping_only' && selected.computed_base_price != null ? 1 : 0) +
+                      (selected.service_type === 'full_service' && (selInv?.base_price || 0) > 0 ? 1 : 0) +
+                      (selected.additional_costs || []).length
                     )
-                  })}
+                    return lines.map((l, i) => {
+                      const lineTotal  = l.amount * (l.qty || 1)
+                      const isDeletable = i >= orderLineCount
+                      const invCostIdx  = i - orderLineCount
+                      return (
+                        <tr key={i}>
+                          <td style={{padding:'10px 0', fontSize:13, borderBottom:'1px solid var(--gray-100)'}}>{l.label}</td>
+                          <td style={{textAlign:'right', padding:'10px 0', fontSize:13, borderBottom:'1px solid var(--gray-100)', color:'var(--gray-400)'}}>{l.qty || 1}</td>
+                          <td style={{textAlign:'right', padding:'10px 0', fontSize:13, borderBottom:'1px solid var(--gray-100)'}}>{formatCurrency(l.amount, l.currency)}</td>
+                          <td style={{textAlign:'right', padding:'10px 0', fontSize:13, fontWeight:600, borderBottom:'1px solid var(--gray-100)'}}>{formatCurrency(lineTotal, l.currency)}</td>
+                          <td style={{textAlign:'right', padding:'10px 0', fontSize:13, fontWeight:700, color:'var(--navy)', borderBottom:'1px solid var(--gray-100)'}}>
+                            Rp {Math.round(toIDR(lineTotal, l.currency, effU, effS)).toLocaleString('id-ID')}
+                          </td>
+                          <td style={{padding:'10px 0', borderBottom:'1px solid var(--gray-100)', textAlign:'right'}}>
+                            {isDeletable && removeInvoiceCost && (
+                              <button className="btn-ghost" style={{color:'var(--red)', padding:'2px 4px'}}
+                                title="Remove this cost"
+                                onClick={() => removeInvoiceCost(selected.id, invCostIdx)}>
+                                <Trash2 size={13} />
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })
+                  })()}
                 </tbody>
               </table>
 

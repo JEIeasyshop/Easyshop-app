@@ -20,7 +20,7 @@ const ALL_TABS = [
   { id: 'cost',      label: 'Cost',      Icon: Receipt,    ownerOnly: false },
   { id: 'completed', label: 'Completed', Icon: Archive,    ownerOnly: false },
   { id: 'customers', label: 'Customers', Icon: Users,      ownerOnly: false },
-  { id: 'finance',   label: 'Finance',   Icon: DollarSign, ownerOnly: true  },
+  { id: 'finance',   label: 'Finance',   Icon: DollarSign, ownerOnly: false },
 ]
 
 function Dashboard({ session, role }) {
@@ -31,7 +31,7 @@ function Dashboard({ session, role }) {
     loading, error,
     addOrder, updateOrder,
     updateTracking, advanceStage,
-    upsertInvoice, addInvoiceCost, lockInvoiceTotal,
+    upsertInvoice, addInvoiceCost, removeInvoiceCost, lockInvoiceTotal,
     completeOrder,
     addCostLine, removeCostLine, updateCostNotes, completeCost,
     revertCompleted, deleteCompleted, cleanupExpired,
@@ -96,7 +96,8 @@ function Dashboard({ session, role }) {
           {tab === 'invoices' && (
             <InvoiceTab
               orders={orders} tracking={tracking} invoices={invoices}
-              addInvoiceCost={addInvoiceCost} lockInvoiceTotal={lockInvoiceTotal}
+              addInvoiceCost={addInvoiceCost} removeInvoiceCost={removeInvoiceCost}
+              lockInvoiceTotal={lockInvoiceTotal}
               completeOrder={completeOrder}
             />
           )}
@@ -125,7 +126,7 @@ function Dashboard({ session, role }) {
               deleteCustomer={deleteCustomer}
             />
           )}
-          {tab === 'finance' && role === 'owner' && (
+          {tab === 'finance' && (
             <FinanceTab completedOrders={completedOrders} />
           )}
         </ErrorBoundary>

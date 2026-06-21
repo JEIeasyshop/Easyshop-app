@@ -168,6 +168,20 @@ export function useAppData() {
     })
   }, [invoices, upsertInvoice])
 
+  // Remove a cost line from an invoice by index
+  const removeInvoiceCost = useCallback(async (orderId, index) => {
+    const invoice  = invoices.find(inv => inv.order_id === orderId)
+    if (!invoice) throw new Error('Invoice not found')
+    const newCosts = (invoice.additional_costs || []).filter((_, i) => i !== index)
+    const newTotal = (invoice.base_price || 0) + newCosts.reduce((s, c) => s + Number(c.amount), 0)
+    await upsertInvoice(orderId, {
+      base_price:       invoice.base_price || 0,
+      additional_costs: newCosts,
+      total:            newTotal,
+      currency:         invoice.currency || 'USD',
+    })
+  }, [invoices, upsertInvoice])
+
   // Update base price on invoice (called when completing to lock computed total)
   const lockInvoiceTotal = useCallback(async (orderId, total, currency, usdRate = null, sgdRate = null) => {
     const invoice  = invoices.find(inv => inv.order_id === orderId)
@@ -352,7 +366,7 @@ export function useAppData() {
     // Tracking
     updateTracking, advanceStage,
     // Invoices
-    upsertInvoice, addInvoiceCost, lockInvoiceTotal,
+    upsertInvoice, addInvoiceCost, removeInvoiceCost, lockInvoiceTotal,
     // Complete invoice → costs
     completeOrder,
     // Costs
