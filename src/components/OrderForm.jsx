@@ -47,7 +47,7 @@ const emptyForm = {
   additional_notes:     '',
 }
 
-export default function OrderForm({ onSubmit, onClose, customers = [] }) {
+export default function OrderForm({ onSubmit, onClose, customers = [], addCustomer }) {
   const [step, setStep]     = useState(0)
   const [form, setForm]     = useState(emptyForm)
   const [saving, setSaving] = useState(false)
@@ -58,7 +58,9 @@ export default function OrderForm({ onSubmit, onClose, customers = [] }) {
   const isFull     = form.service_type === 'full_service'
   const isShipping = form.service_type === 'shipping_only'
 
-  // Autofill from customer record
+  const [showSuggestions, setShowSuggestions] = useState(false)
+
+  // Autofill from customer record — closes dropdown
   const autofill = (customer) => {
     setForm(f => ({
       ...f,
@@ -66,6 +68,7 @@ export default function OrderForm({ onSubmit, onClose, customers = [] }) {
       contact_number:   customer.contact_number || '',
       delivery_address: customer.address        || '',
     }))
+    setShowSuggestions(false)
   }
 
   // Filtered customer suggestions while typing name
@@ -158,6 +161,21 @@ export default function OrderForm({ onSubmit, onClose, customers = [] }) {
         p.computed_currency    = form.full_service_currency
       }
 
+      // Auto-save new customer if name not already in list
+      const name = form.customer_name.trim()
+      const alreadyExists = customers.some(c => c.name.toLowerCase() === name.toLowerCase())
+      if (name && !alreadyExists && addCustomer) {
+        try {
+          await addCustomer({
+            name,
+            contact_number: form.contact_number || null,
+            address:        form.delivery_address || null,
+          })
+        } catch (e) {
+          console.warn('Auto-save customer failed (non-fatal):', e)
+        }
+      }
+
       await onSubmit(p)
     } catch (err) {
       setError(err.message || 'Failed to save.')
@@ -196,14 +214,16 @@ export default function OrderForm({ onSubmit, onClose, customers = [] }) {
               <label className="form-label">Customer Name</label>
               <input className="form-input" type="text" placeholder="Full name or search existing…"
                 value={form.customer_name}
-                onChange={e => set('customer_name', e.target.value)}
+                onChange={e => { set('customer_name', e.target.value); setShowSuggestions(true) }}
+                onFocus={() => setShowSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
                 autoComplete="off" />
-              {/* Autofill dropdown */}
-              {suggestions.length > 0 && (
+              {/* Autofill dropdown — only when suggestions exist AND showSuggestions */}
+              {showSuggestions && suggestions.length > 0 && (
                 <div className="autofill-dropdown">
                   {suggestions.map(c => (
                     <button key={c.id} className="autofill-item"
-                      onClick={() => autofill(c)}>
+                      onMouseDown={e => { e.preventDefault(); autofill(c) }}>
                       <UserCheck size={13} style={{color:'var(--gold)', flexShrink:0}} />
                       <div>
                         <div style={{fontWeight:600, fontSize:13}}>{c.name}</div>

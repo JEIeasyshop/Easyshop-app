@@ -80,6 +80,7 @@ function Dashboard({ session, role }) {
             <OrdersTab
               orders={orders} tracking={tracking}
               addOrder={addOrder} customers={customers}
+              addCustomer={addCustomer}
             />
           )}
           {tab === 'tracking' && (

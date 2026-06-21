@@ -124,6 +124,21 @@ export default function TrackingTab({ orders, tracking, carriers, updateTracking
     finally { setAdvancing(null) }
   }
 
+  // Revert to a previous stage by clicking a done checkpoint
+  const revertTo = async (order, targetStage) => {
+    const t = tracking.find(tr => tr.order_id === order.id)
+    if (!t) return
+    // Trim stage_history back to the target stage
+    const newHistory = (t.stage_history || []).filter(h => h.stage <= targetStage)
+    setAdvancing(order.id)
+    try {
+      await updateTracking(order.id, {
+        current_stage: targetStage,
+        stage_history: newHistory,
+      })
+    } finally { setAdvancing(null) }
+  }
+
   const setPayment = async (orderId, payment) => {
     setSavingPay(orderId)
     try { await updateTracking(orderId, { payment }) }
@@ -222,7 +237,7 @@ export default function TrackingTab({ orders, tracking, carriers, updateTracking
                 </div>
 
                 <div className="ship-card-body">
-                  {/* Checkpoint timeline — matches JEI pill buttons */}
+                  {/* Checkpoint timeline — click done to revert, click future to advance */}
                   <div className="checkpoint-row">
                     {seq.map(s => {
                       const done   = stage > s
@@ -230,8 +245,12 @@ export default function TrackingTab({ orders, tracking, carriers, updateTracking
                       return (
                         <button key={s}
                           className={`checkpoint ${done ? 'cp-done' : active ? 'cp-active' : 'cp-future'}`}
-                          onClick={() => !done && !active && advance(order, stage)}
-                          disabled={advancing === order.id || done}>
+                          disabled={advancing === order.id}
+                          title={done ? 'Click to revert to this stage' : active ? 'Current stage' : 'Click to advance here'}
+                          onClick={() => {
+                            if (done) revertTo(order, s)
+                            else if (!active) advance(order, stage)
+                          }}>
                           {done && <Check size={11} style={{marginRight:4}} />}
                           {getStageLabel(order.service_type, s)}
                         </button>

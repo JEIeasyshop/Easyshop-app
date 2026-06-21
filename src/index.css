@@ -781,7 +781,8 @@ hr { border: none; border-top: 1px solid var(--gray-100); margin: 16px 0; }
   cursor: pointer; transition: all 0.15s;
   white-space: nowrap;
 }
-.cp-done   { background: var(--green-bg); color: var(--green); cursor: default; }
+.cp-done   { background: var(--green-bg); color: var(--green); }
+.cp-done:hover:not(:disabled) { background: #FEF2F2; color: var(--red); }
 .cp-active { background: var(--navy); color: var(--white); box-shadow: 0 0 0 2px rgba(27,42,74,0.2); }
 .cp-future { background: var(--white); border: 1.5px solid var(--gray-200); color: var(--gray-400); }
 .cp-future:hover:not(:disabled) { border-color: var(--navy); color: var(--navy); }

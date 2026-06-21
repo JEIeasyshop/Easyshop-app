@@ -155,19 +155,21 @@ export default function InvoiceTab({
                 className={`inv-row ${isSel ? 'inv-row-active' : ''}`}
                 onClick={() => selectOrder(order.id)}>
                 <div className="flex-center gap-10">
-                  <FileText size={14} style={{color:'var(--navy)', opacity:0.6}} />
-                  <span className="text-mono text-sm" style={{color:'var(--navy)', fontWeight:600}}>
+                  <FileText size={14} style={{color:'var(--navy)', opacity:0.6, flexShrink:0}} />
+                  <span className="text-mono text-sm fw-700" style={{color:'var(--navy)', flexShrink:0}}>
                     ORD-{order.id?.substring(0,6).toUpperCase()}
                   </span>
-                  <span style={{fontWeight:600}}>{order.customer_name}</span>
-                  <span className="text-muted text-sm">
-                    {DIR_LABEL[order.direction] || order.direction_other_note || 'Other'} ·{' '}
-                    {order.goods_description || '—'}
+                  <span style={{fontWeight:700, flexShrink:0}}>{order.customer_name}</span>
+                  <span className="text-muted text-sm" style={{
+                    overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:300
+                  }}>
+                    {DIR_LABEL[order.direction] || order.direction_other_note || 'Other'}
+                    {order.goods_description ? ` · ${order.goods_description}` : ''}
                   </span>
                 </div>
-                <div className="flex-center gap-10">
+                <div className="flex-center gap-10" style={{flexShrink:0}}>
                   {payBadge(tRow)}
-                  <span style={{fontWeight:700, fontSize:14}}>
+                  <span style={{fontWeight:700, fontSize:14, whiteSpace:'nowrap'}}>
                     Rp {Math.round(totalIDR).toLocaleString('id-ID')}
                   </span>
                 </div>

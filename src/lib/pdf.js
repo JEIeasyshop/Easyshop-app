@@ -1,152 +1,193 @@
 // src/lib/pdf.js
-// generateInvoicePDF(order, invoice, feeLines)
-// feeLines: [{ label, amount, currency }] — built by InvoiceTab.buildFeeLines()
-// Same logic used by InvoiceTab and CompletedTab so PDF always matches screen.
+// Invoice PDF exactly matching JEI format (INV-1004.pdf):
+// - Logo top-left, "Invoice" title top-right
+// - Header table: Invoice No, Invoice Date, Bill To, Ship To
+// - Fee lines table: Description | Amount | In IDR
+// - Summary table: Sales Tax | Discount | Deposit Received | TOTAL
+// - Payment details footer
+// Brand: "JEI Easyshop" (replacing "Jon Express International LLC")
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { formatCurrency } from './pricing'
 
-const NAVY = [27, 42, 74]
-const GOLD = [201, 168, 76]
-const GRAY = [110, 120, 140]
-const W    = 210
-const M    = 20
-
-const DIR = { us_jkt: 'US → JKT', jkt_us: 'JKT → US', other: 'Other' }
-const SVC = { full_service: 'Full Service', shipping_only: 'Shipping Only' }
+const DEFAULT_FX    = 15850
+const BRAND_NAME    = 'JEI EASYSHOP'
+const BRAND_ADDRESS = ['Freight Forwarding · US → SG → ID', 'jonexpressintl@gmail.com']
 
 export function generateInvoicePDF(order, invoice, feeLines = []) {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
+  const W   = 210
+  const M   = 14
 
-  // ── Header bar ──
+  // ── Fonts / colors ──────────────────────────────────────
+  const NAVY   = [27, 42, 74]
+  const GOLD   = [201, 168, 76]
+  const BLACK  = [30, 35, 50]
+  const GRAY   = [100, 110, 130]
+  const LGRAY  = [200, 205, 215]
+
+  // ── Top section: logo left, INVOICE right ───────────────
+  // Logo box
   doc.setFillColor(...NAVY)
-  doc.rect(0, 0, W, 34, 'F')
-
-  // Logo placeholder (gold square + JEI text)
-  doc.setFillColor(...GOLD)
-  doc.roundedRect(M, 8, 18, 18, 2, 2, 'F')
-  doc.setTextColor(...NAVY)
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(8)
-  doc.text('JEI', M + 9, 19, { align: 'center' })
-
-  doc.setTextColor(255, 255, 255)
-  doc.setFontSize(16)
-  doc.setFont('helvetica', 'bold')
-  doc.text('Jon Express International', M + 22, 16)
-  doc.setFontSize(7.5)
+  doc.roundedRect(M, 10, 22, 22, 2, 2, 'F')
   doc.setTextColor(...GOLD)
-  doc.setFont('helvetica', 'normal')
-  doc.text('FREIGHT MANAGEMENT', M + 22, 22)
-
-  doc.setTextColor(255, 255, 255)
-  doc.setFontSize(22)
   doc.setFont('helvetica', 'bold')
-  doc.text('INVOICE', W - M, 19, { align: 'right' })
+  doc.setFontSize(9)
+  doc.text('JEI', M + 11, 23, { align: 'center' })
 
-  // Gold rule
-  doc.setDrawColor(...GOLD)
-  doc.setLineWidth(0.6)
-  doc.line(M, 38, W - M, 38)
-
-  // ── Meta block ──
-  let y = 46
-  const invDate = new Date().toLocaleDateString('en-GB', { day:'2-digit', month:'long', year:'numeric' })
-  const ordDate = order.order_date
-    ? new Date(order.order_date).toLocaleDateString('en-GB', { day:'2-digit', month:'long', year:'numeric' })
-    : '—'
-  const refId = (order.id || '').substring(0, 8).toUpperCase()
-
+  // Brand name below logo
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(8.5)
-  doc.setTextColor(...GRAY)
-  doc.text('BILL TO', M, y)
-  doc.setFontSize(14)
+  doc.setFontSize(11)
   doc.setTextColor(...NAVY)
-  doc.setFont('helvetica', 'bold')
-  doc.text(order.customer_name || '—', M, y + 7)
-
+  doc.text(BRAND_NAME, M + 26, 16)
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(8.5)
+  doc.setFontSize(8)
   doc.setTextColor(...GRAY)
-  doc.text([
-    `Invoice Date: ${invDate}`,
-    `Order Date:   ${ordDate}`,
-    `Reference:    #${refId}`,
-  ], W - M, y, { align: 'right' })
+  BRAND_ADDRESS.forEach((line, i) => doc.text(line, M + 26, 21 + i * 4))
 
-  y += 18
-  doc.setDrawColor(220, 225, 235)
-  doc.setLineWidth(0.3)
-  doc.line(M, y, W - M, y)
+  // "Invoice" title — right aligned, large
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(28)
+  doc.setTextColor(...NAVY)
+  doc.text('Invoice', W - M, 22, { align: 'right' })
 
-  // ── Order details table ──
-  y += 6
+  // ── Invoice meta table (right side) ─────────────────────
+  const invNo   = `INV-JEI/${Math.floor(Math.random() * 9000) + 1000}`
+  const invDate = new Date().toLocaleDateString('en-GB', { day:'2-digit', month:'2-digit', year:'numeric' })
+  const shipTo  = order.delivery_address || '—'
+
+  let y = 36
   autoTable(doc, {
     startY: y,
-    margin: { left: M, right: M },
-    head: [['Field', 'Detail']],
+    margin: { left: W / 2, right: M },
+    tableWidth: W / 2 - M,
+    head: [],
     body: [
-      ['Direction',    DIR[order.direction] || order.direction_other_note || '—'],
-      ['Service Type', SVC[order.service_type] || '—'],
-      ['Goods',        order.goods_description || '—'],
-      ['Weight',       order.weight_kg ? `${order.weight_kg} kg` : '—'],
-      ['Chargeable',   order.chargeable_weight_kg ? `${order.chargeable_weight_kg} kg` : '—'],
-      ['Notes',        order.additional_notes || '—'],
+      ['Invoice No.',   invNo],
+      ['Invoice Date',  invDate],
+      ['Bill To',       { content: order.customer_name || '—', styles: { fontStyle: 'bold' } }],
+      ['Ship to',       shipTo],
     ],
-    headStyles: { fillColor: NAVY, textColor: [255,255,255], fontStyle: 'bold', fontSize: 8.5 },
-    bodyStyles: { fontSize: 9, textColor: [30,40,60] },
-    columnStyles: { 0: { fontStyle: 'bold', textColor: GRAY, cellWidth: 38 } },
-    alternateRowStyles: { fillColor: [248,249,252] },
-    styles: { cellPadding: 5, lineColor: [220,225,235], lineWidth: 0.2 },
+    styles: { fontSize: 9, cellPadding: 3, lineColor: LGRAY, lineWidth: 0.2 },
+    columnStyles: {
+      0: { textColor: GRAY, cellWidth: 28 },
+      1: { textColor: BLACK },
+    },
+    theme: 'grid',
   })
 
-  y = doc.lastAutoTable.finalY + 10
+  y = doc.lastAutoTable.finalY + 8
 
-  // ── Fee lines table ──
-  const currency = invoice?.currency || order?.rate_currency || 'USD'
-  const rows = feeLines.length > 0
-    ? feeLines.map(l => [l.label, formatCurrency(l.amount, l.currency || currency)])
-    : [['(No pricing set)', '—']]
+  // ── Fee lines table ──────────────────────────────────────
+  const currency  = invoice?.currency || order?.rate_currency || 'USD'
+  const fxRate    = parseFloat(invoice?.usd_rate) || DEFAULT_FX
 
-  const total = feeLines.reduce((s, l) => s + l.amount, 0)
+  const toIDR = (amount, cur) => {
+    if (cur === 'IDR') return amount
+    return amount * fxRate
+  }
+
+  const feeRows = feeLines.length > 0
+    ? feeLines.map(l => [
+        l.label,
+        formatCurrency(l.amount, l.currency || currency),
+        `Rp ${Math.round(toIDR(l.amount, l.currency || currency)).toLocaleString('id-ID')}`,
+      ])
+    : [['No fee lines recorded', '', '']]
+
+  const totalIDR = feeLines.reduce((s, l) => s + toIDR(l.amount, l.currency || currency), 0)
+  const totalAmt = feeLines.reduce((s, l) => s + l.amount, 0)
 
   autoTable(doc, {
     startY: y,
     margin: { left: M, right: M },
-    head: [['Description', 'Amount']],
-    body: rows,
-    headStyles: { fillColor: NAVY, textColor: [255,255,255], fontStyle: 'bold', fontSize: 8.5 },
-    bodyStyles: { fontSize: 9, textColor: [30,40,60] },
-    columnStyles: { 1: { halign: 'right', cellWidth: 44 } },
-    alternateRowStyles: { fillColor: [248,249,252] },
-    styles: { cellPadding: 5, lineColor: [220,225,235], lineWidth: 0.2 },
+    head: [['Description', 'Amount', 'In IDR']],
+    body: feeRows,
+    headStyles: {
+      fillColor: [255, 255, 255],
+      textColor: BLACK,
+      fontStyle: 'bold',
+      fontSize: 9,
+      lineColor: LGRAY,
+      lineWidth: 0.2,
+    },
+    bodyStyles: { fontSize: 9, textColor: BLACK, lineColor: LGRAY, lineWidth: 0.2, minCellHeight: 12 },
+    columnStyles: {
+      0: { cellWidth: 'auto' },
+      1: { cellWidth: 36, halign: 'right' },
+      2: { cellWidth: 40, halign: 'right', fontStyle: 'bold' },
+    },
+    theme: 'grid',
   })
 
   y = doc.lastAutoTable.finalY + 4
 
-  // ── Total bar ──
-  doc.setFillColor(...NAVY)
-  doc.roundedRect(M, y, W - M * 2, 14, 2, 2, 'F')
+  // ── Summary table (right-aligned) ───────────────────────
+  autoTable(doc, {
+    startY: y,
+    margin: { left: W / 2, right: M },
+    tableWidth: W / 2 - M,
+    head: [],
+    body: [
+      ['Sales Tax',         ''],
+      ['Discount',          ''],
+      ['Deposit Received',  ''],
+      [{ content: 'TOTAL', styles: { fontStyle: 'bold', fontSize: 10 } },
+       { content: `Rp ${Math.round(totalIDR).toLocaleString('id-ID')}`, styles: { fontStyle: 'bold', fontSize: 10 } }],
+    ],
+    styles: { fontSize: 9, cellPadding: 4, lineColor: LGRAY, lineWidth: 0.2, textColor: BLACK },
+    columnStyles: {
+      0: { cellWidth: 36, halign: 'right', textColor: GRAY },
+      1: { cellWidth: 'auto', halign: 'right' },
+    },
+    theme: 'grid',
+  })
+
+  y = doc.lastAutoTable.finalY + 10
+
+  // ── Payment details footer ───────────────────────────────
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(9)
+  doc.setTextColor(...GOLD)
+  doc.text('Please remit payment to account:', M, y)
+
+  y += 6
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(...BLACK)
+  const payLines = [
+    '',
+    'Indonesian Account',
+    'BCA',
+    'Account name: Merry',
+    'Account number: 5830208790',
+    '',
+    'BCA Dollar Account',
+    'Account name: Merry',
+    'Account number: 5830503333',
+    '',
+    'USA Account:',
+    'JEI Easyshop',
+    'JPMorgan Chase Bank, N.A',
+    'Account number: 680321962',
+    'Routing Number: 325070760',
+    'Venmo: merrytoh16; Chase: jonexpressintl@gmail.com',
+  ]
+
+  payLines.forEach((line, i) => {
+    const isBold = ['Indonesian Account','BCA Dollar Account','USA Account:'].includes(line)
+    doc.setFont('helvetica', isBold ? 'bold' : 'normal')
+    doc.setFontSize(8.5)
+    doc.text(line, M, y + i * 4.5)
+  })
+
+  // ── Thank you footer ─────────────────────────────────────
+  const footerY = 282
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(10)
-  doc.setTextColor(255, 255, 255)
-  doc.text('TOTAL DUE', M + 6, y + 9)
-  doc.setFontSize(13)
-  doc.setTextColor(...GOLD)
-  doc.text(formatCurrency(total, currency), W - M - 6, y + 9, { align: 'right' })
+  doc.setTextColor(...NAVY)
+  doc.text('Thank You for Your Business!', W / 2, footerY, { align: 'center' })
 
-  // ── Footer ──
-  const footerY = 278
-  doc.setDrawColor(...GOLD)
-  doc.setLineWidth(0.5)
-  doc.line(M, footerY, W - M, footerY)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(7.5)
-  doc.setTextColor(...GRAY)
-  doc.text('Jon Express International LLC · Freight Management', W / 2, footerY + 5, { align: 'center' })
-  doc.text('Thank you for your business.', W / 2, footerY + 10, { align: 'center' })
-
-  const fname = `invoice_JEI_${(order.customer_name || 'order').replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`
+  // Save
+  const fname = `INV-JEI_${(order.customer_name || 'order').replace(/\s+/g,'_')}_${new Date().toISOString().split('T')[0]}.pdf`
   doc.save(fname)
 }
