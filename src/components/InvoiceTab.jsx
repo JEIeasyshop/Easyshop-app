@@ -1,95 +1,128 @@
 // src/components/InvoiceTab.jsx
-// Design: matches JEI Invoices tab — list at top, expanded invoice doc below,
-// add cost line, conversion rates box, complete button
-import { useState } from 'react'
-import { FileText, Printer, CheckCircle, Plus, X } from 'lucide-react'
-import { getStageSequence, isFinalStage } from '../lib/data'
+import { useState, useMemo } from 'react'
+import { FileText, Printer, CheckCircle, Plus, X, Search } from 'lucide-react'
+import { getStageSequence, isFinalStage, getStageLabel } from '../lib/data'
 import { formatCurrency } from '../lib/pricing'
 import { generateInvoicePDF } from '../lib/pdf'
 
 const DIR_LABEL = { us_jkt: 'US → JKT', jkt_us: 'JKT → US' }
-
-// Default FX fallbacks
 const DEFAULT_USD_IDR = 15850
 const DEFAULT_SGD_IDR = 11900
+
+// Stage 5 = "Sent to customer", Stage 6 = "Received by customer"
+function getSentStatus(order, tRow) {
+  if (!tRow) return 'unknown'
+  const seq   = getStageSequence(order.service_type)
+  const stage = tRow.current_stage
+  const last  = seq[seq.length - 1]
+  if (stage === last) return 'received'          // stage 6
+  if (stage === last - 1) return 'sent'          // stage 5
+  return 'in_transit'
+}
+
+const STATUS_CONFIG = {
+  received:   { label: 'Received by customer', cls: 'badge-green' },
+  sent:       { label: 'Sent to customer',      cls: 'badge-amber' },
+  in_transit: { label: 'In transit',            cls: 'badge-blue'  },
+}
 
 export default function InvoiceTab({
   orders, tracking, invoices,
   addInvoiceCost, lockInvoiceTotal, completeOrder,
 }) {
-  const [selectedId, setSelectedId] = useState(null)
-  const [confirmId, setConfirmId]   = useState(null)
-  const [completing, setCompleting] = useState(false)
+  const [selectedId, setSelectedId]   = useState(null)
+  const [confirmId, setConfirmId]     = useState(null)
+  const [completing, setCompleting]   = useState(false)
+  const [search, setSearch]           = useState('')
+  const [filterStatus, setFilterStatus] = useState('all') // 'all' | 'received' | 'sent' | 'in_transit'
 
   // Add cost line state
-  const [costDesc, setCostDesc]     = useState('')
-  const [costAmt, setCostAmt]       = useState('')
-  const [costCur, setCostCur]       = useState('IDR')
+  const [costDesc, setCostDesc]   = useState('')
+  const [costAmt, setCostAmt]     = useState('')
+  const [costQty, setCostQty]     = useState('1')
+  const [costCur, setCostCur]     = useState('IDR')
   const [savingCost, setSavingCost] = useState(false)
 
-  // Per-invoice FX rates (matches JEI: stored per invoice, not global)
+  // FX rates
   const [usdRate, setUsdRate]       = useState('')
   const [sgdRate, setSgdRate]       = useState('')
   const [savingRates, setSavingRates] = useState(false)
 
-  // Only show orders at final tracking stage
-  const invoiceReady = orders.filter(o => {
+  // Show all orders that are at least at stage 5 (sent to customer) or final
+  const invoiceReady = useMemo(() => orders.filter(o => {
     const t = tracking.find(t => t.order_id === o.id)
-    return isFinalStage(o, t)
-  })
+    if (!t) return false
+    const seq = getStageSequence(o.service_type)
+    // Show from stage 5 onwards (sent to customer)
+    return t.current_stage >= seq[seq.length - 2]
+  }), [orders, tracking])
 
-  const getInv = (oid) => invoices.find(i => i.order_id === oid)
+  // Apply search + status filter
+  const filtered = useMemo(() => {
+    return invoiceReady.filter(o => {
+      const t = tracking.find(tr => tr.order_id === o.id)
+      if (filterStatus !== 'all' && getSentStatus(o, t) !== filterStatus) return false
+      if (search.trim()) {
+        const q = search.toLowerCase()
+        return (o.customer_name || '').toLowerCase().includes(q) ||
+               (o.goods_description || '').toLowerCase().includes(q)
+      }
+      return true
+    })
+  }, [invoiceReady, tracking, filterStatus, search])
+
+  const getInv  = (oid) => invoices.find(i => i.order_id === oid)
   const getTrow = (oid) => tracking.find(t => t.order_id === oid)
 
-  const selected = invoiceReady.find(o => o.id === selectedId)
+  const selected = filtered.find(o => o.id === selectedId) || invoiceReady.find(o => o.id === selectedId)
   const selInv   = selected ? getInv(selected.id) : null
   const selTrow  = selected ? getTrow(selected.id) : null
 
-  // When selecting an order, pre-fill saved rates if any
   const selectOrder = (oid) => {
     setSelectedId(prev => prev === oid ? null : oid)
     const inv = getInv(oid)
     setUsdRate(inv?.usd_rate?.toString() || '')
     setSgdRate(inv?.sgd_rate?.toString() || '')
-    setCostDesc(''); setCostAmt(''); setCostCur('IDR')
+    setCostDesc(''); setCostAmt(''); setCostQty('1'); setCostCur('IDR')
   }
 
-  // Build fee lines (same as before — drives both UI and PDF)
   const buildFeeLines = (order, inv) => {
     const lines = []
     const cur   = inv?.currency || order?.rate_currency || 'USD'
     if (order.service_type === 'shipping_only' && order.computed_base_price != null) {
       lines.push({
         label: `${DIR_LABEL[order.direction] || 'Shipping'} (${order.chargeable_weight_kg || order.weight_kg || '?'} kg × ${formatCurrency(order.rate_per_kg || 0, cur)})`,
-        amount: order.computed_base_price, currency: cur,
+        amount: order.computed_base_price, currency: cur, qty: 1,
       })
     } else if (order.service_type === 'full_service' && (inv?.base_price || 0) > 0) {
-      lines.push({ label: 'Full Service Fee', amount: inv.base_price, currency: cur })
+      lines.push({ label: 'Full Service Fee', amount: inv.base_price, currency: cur, qty: 1 })
     }
     ;(order.additional_costs || []).forEach(c =>
-      lines.push({ label: c.description, amount: Number(c.amount), currency: cur })
+      lines.push({ label: c.description, amount: Number(c.amount), currency: cur, qty: Number(c.qty) || 1 })
     )
     ;(inv?.additional_costs || []).forEach(c =>
-      lines.push({ label: c.description, amount: Number(c.amount), currency: c.currency || cur })
+      lines.push({ label: c.description, amount: Number(c.amount), currency: c.currency || cur, qty: Number(c.qty) || 1 })
     )
     return lines
   }
 
-  // Convert amount to IDR using saved or default rates
   const toIDR = (amount, currency, uR, sR) => {
     const fxU = parseFloat(uR) || DEFAULT_USD_IDR
     const fxS = parseFloat(sR) || DEFAULT_SGD_IDR
-    if (currency === 'USD') return amount * fxU
+    if (currency === 'IDR') return amount
     if (currency === 'SGD') return amount * fxS
-    return amount // already IDR
+    return amount * fxU
   }
 
   const handleAddCost = async (oid) => {
     if (!costDesc.trim() || !costAmt) return
     setSavingCost(true)
     try {
-      await addInvoiceCost(oid, costDesc.trim(), parseFloat(costAmt), costCur)
-      setCostDesc(''); setCostAmt('')
+      const qty    = parseInt(costQty) || 1
+      const label  = qty > 1 ? `${costDesc.trim()} ×${qty}` : costDesc.trim()
+      const total  = parseFloat(costAmt) * qty
+      await addInvoiceCost(oid, label, total, costCur)
+      setCostDesc(''); setCostAmt(''); setCostQty('1')
     } finally { setSavingCost(false) }
   }
 
@@ -105,11 +138,11 @@ export default function InvoiceTab({
   const handleComplete = async (oid) => {
     setCompleting(true)
     try {
-      const inv   = getInv(oid)
+      const inv = getInv(oid)
       const order = orders.find(o => o.id === oid)
       if (inv) await lockInvoiceTotal(oid, inv.total, inv.currency || order?.rate_currency || 'USD',
         parseFloat(usdRate) || null, parseFloat(sgdRate) || null)
-      await completeOrder(oid)
+      await completeOrder(oid) // → moves to Cost tab
       setConfirmId(null); setSelectedId(null)
     } finally { setCompleting(false) }
   }
@@ -117,57 +150,84 @@ export default function InvoiceTab({
   const payBadge = (tRow) => {
     const p = tRow?.payment || 'Unpaid'
     const cls = p === 'Paid' ? 'badge-green' : p === 'Invoiced' ? 'badge-amber' : 'badge-red'
-    return <span className={`badge ${cls}`}>{p}</span>
+    return <span className={`badge ${cls}`} style={{fontSize:11}}>{p}</span>
   }
+
+  // Count by status
+  const statusCounts = useMemo(() => {
+    const counts = { all: invoiceReady.length }
+    invoiceReady.forEach(o => {
+      const t = getTrow(o.id)
+      const s = getSentStatus(o, t)
+      counts[s] = (counts[s] || 0) + 1
+    })
+    return counts
+  }, [invoiceReady])
 
   return (
     <div>
       <div className="page-header">
         <h2>Invoices</h2>
-        <p>Delivered orders are billable. Complete an invoice to archive it from active views.</p>
+        <p>Delivered orders are billable. Complete an invoice to move it to the Cost tab.</p>
       </div>
 
-      {invoiceReady.length === 0 ? (
+      {/* Filter row */}
+      <div className="flex-center gap-8" style={{marginBottom:14, flexWrap:'wrap'}}>
+        {[['all','All'],['received','Received by customer'],['sent','Sent to customer'],['in_transit','In transit']].map(([v,l]) => (
+          <button key={v}
+            className={`stage-filter-chip ${filterStatus === v ? 'active' : ''}`}
+            onClick={() => setFilterStatus(v)}>
+            {l}
+            <span className="stage-filter-count">{statusCounts[v] || 0}</span>
+          </button>
+        ))}
+        <div className="search-wrap" style={{flex:1, minWidth:200, maxWidth:320, marginLeft:'auto'}}>
+          <Search size={14} className="search-icon" />
+          <input className="search-input" type="text" placeholder="Search invoices…"
+            value={search} onChange={e => setSearch(e.target.value)} />
+        </div>
+      </div>
+
+      {filtered.length === 0 ? (
         <div className="card">
           <div className="empty-state">
             <div className="empty-icon"><FileText size={26} /></div>
-            <h3>No invoices ready</h3>
-            <p>Advance a shipment to "Received by customer" in Tracking to generate an invoice.</p>
+            <h3>No invoices</h3>
+            <p>Orders appear here once they reach "Sent to customer" stage.</p>
           </div>
         </div>
       ) : (<>
-        {/* Invoice list — clickable rows at top */}
+        {/* Invoice list */}
         <div className="inv-list">
-          {invoiceReady.map(order => {
+          {filtered.map(order => {
             const inv    = getInv(order.id)
             const tRow   = getTrow(order.id)
             const lines  = buildFeeLines(order, inv)
-            const total  = lines.reduce((s, l) => s + l.amount, 0)
-            const cur    = inv?.currency || order?.rate_currency || 'USD'
-            const isSel  = selectedId === order.id
+            const total  = lines.reduce((s, l) => s + l.amount * (l.qty || 1), 0)
             const savedU = inv?.usd_rate
             const savedS = inv?.sgd_rate
-            const totalIDR = lines.reduce((s, l) =>
-              s + toIDR(l.amount, l.currency, savedU || usdRate, savedS || sgdRate), 0)
+            const totalIDR = lines.reduce((s, l) => s + toIDR(l.amount * (l.qty || 1), l.currency, savedU, savedS), 0)
+            const isSel  = selectedId === order.id
+            const status = getSentStatus(order, tRow)
+            const sCfg   = STATUS_CONFIG[status]
 
             return (
               <div key={order.id}
                 className={`inv-row ${isSel ? 'inv-row-active' : ''}`}
                 onClick={() => selectOrder(order.id)}>
-                <div className="flex-center gap-10">
+                <div className="flex-center gap-10" style={{overflow:'hidden'}}>
                   <FileText size={14} style={{color:'var(--navy)', opacity:0.6, flexShrink:0}} />
                   <span className="text-mono text-sm fw-700" style={{color:'var(--navy)', flexShrink:0}}>
                     ORD-{order.id?.substring(0,6).toUpperCase()}
                   </span>
                   <span style={{fontWeight:700, flexShrink:0}}>{order.customer_name}</span>
-                  <span className="text-muted text-sm" style={{
-                    overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:300
-                  }}>
+                  <span className="text-muted text-sm" style={{overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
                     {DIR_LABEL[order.direction] || order.direction_other_note || 'Other'}
                     {order.goods_description ? ` · ${order.goods_description}` : ''}
                   </span>
                 </div>
-                <div className="flex-center gap-10" style={{flexShrink:0}}>
+                <div className="flex-center gap-8" style={{flexShrink:0}}>
+                  <span className={`badge ${sCfg.cls}`}>{sCfg.label}</span>
                   {payBadge(tRow)}
                   <span style={{fontWeight:700, fontSize:14, whiteSpace:'nowrap'}}>
                     Rp {Math.round(totalIDR).toLocaleString('id-ID')}
@@ -178,27 +238,23 @@ export default function InvoiceTab({
           })}
         </div>
 
-        {/* Expanded invoice doc — matches JEI InvoiceDoc */}
-        {selected && selInv !== undefined && (() => {
-          const lines  = buildFeeLines(selected, selInv)
-          const total  = lines.reduce((s, l) => s + l.amount, 0)
-          const cur    = selInv?.currency || selected?.rate_currency || 'USD'
-          const savedU = selInv?.usd_rate
-          const savedS = selInv?.sgd_rate
-          const effU   = parseFloat(usdRate) || savedU || DEFAULT_USD_IDR
-          const effS   = parseFloat(sgdRate) || savedS || DEFAULT_SGD_IDR
-          const totalIDR = lines.reduce((s, l) => s + toIDR(l.amount, l.currency, effU, effS), 0)
-          const pay    = selTrow?.payment || 'Unpaid'
+        {/* Expanded invoice doc */}
+        {selected && (() => {
+          const inv      = selInv
+          const lines    = buildFeeLines(selected, inv)
+          const effU     = parseFloat(usdRate) || inv?.usd_rate || DEFAULT_USD_IDR
+          const effS     = parseFloat(sgdRate) || inv?.sgd_rate || DEFAULT_SGD_IDR
+          const totalIDR = lines.reduce((s, l) => s + toIDR(l.amount * (l.qty || 1), l.currency, effU, effS), 0)
+          const pay      = selTrow?.payment || 'Unpaid'
 
           return (
             <div className="inv-doc">
-              {/* Doc header */}
               <div className="inv-doc-header">
                 <div className="flex-center gap-12">
                   <img src="/logo.png" alt="JEI" style={{width:44, height:44, objectFit:'contain'}} />
                   <div>
                     <div style={{fontFamily:'var(--font-brand)', fontWeight:800, fontSize:14, color:'var(--navy)'}}>
-                      JON EXPRESS INTERNATIONAL
+                      JEI EASYSHOP
                     </div>
                     <div className="text-sm text-muted">Freight forwarding · US → SG → ID</div>
                   </div>
@@ -208,13 +264,11 @@ export default function InvoiceTab({
                     INVOICE
                   </div>
                   <div className="text-sm text-muted">INV-{selected.id?.substring(0,6).toUpperCase()}</div>
-                  <div className="text-sm text-muted">Issued</div>
                 </div>
               </div>
 
               <hr />
 
-              {/* Meta row */}
               <div className="inv-meta-row">
                 <div>
                   <div className="inv-meta-label">BILL TO</div>
@@ -224,73 +278,77 @@ export default function InvoiceTab({
                   <div className="inv-meta-label">SHIPMENT</div>
                   <div className="inv-meta-value">
                     {selTrow?.tracking_number || `ORD-${selected.id?.substring(0,6).toUpperCase()}`}
-                    {selTrow?.track_us_sg_carrier && ` · ${selTrow.track_us_sg_carrier}`}
                   </div>
                 </div>
                 <div>
                   <div className="inv-meta-label">STATUS</div>
-                  <div className="inv-meta-value" style={{color:'var(--green)', fontWeight:700}}>Delivered</div>
+                  <div>
+                    <span className={`badge ${STATUS_CONFIG[getSentStatus(selected, selTrow)].cls}`}>
+                      {STATUS_CONFIG[getSentStatus(selected, selTrow)].label}
+                    </span>
+                  </div>
                 </div>
                 <div>
                   <div className="inv-meta-label">PAYMENT</div>
-                  <div>{(() => {
-                    const cls = pay === 'Paid' ? 'badge-green' : pay === 'Invoiced' ? 'badge-amber' : 'badge-red'
-                    return <span className={`badge ${cls}`}>{pay}</span>
-                  })()}</div>
+                  <div>{payBadge(selTrow)}</div>
                 </div>
               </div>
 
               <hr />
 
-              {/* Fee lines table */}
+              {/* Fee lines */}
               <table style={{width:'100%', borderCollapse:'collapse', marginBottom:16}}>
                 <thead>
                   <tr>
-                    <th style={{textAlign:'left', padding:'8px 0', fontSize:11, color:'var(--gray-400)',
-                      textTransform:'uppercase', letterSpacing:'0.07em', borderBottom:'1px solid var(--gray-200)'}}>
-                      Description
-                    </th>
-                    <th style={{textAlign:'right', padding:'8px 0', fontSize:11, color:'var(--gray-400)',
-                      textTransform:'uppercase', letterSpacing:'0.07em', borderBottom:'1px solid var(--gray-200)'}}>
-                      Amount
-                    </th>
-                    <th style={{textAlign:'right', padding:'8px 0', fontSize:11, color:'var(--gray-400)',
-                      textTransform:'uppercase', letterSpacing:'0.07em', borderBottom:'1px solid var(--gray-200)'}}>
-                      In IDR
-                    </th>
+                    {['Description','Qty','Unit Price','Total','In IDR'].map(h => (
+                      <th key={h} style={{textAlign: h === 'Description' ? 'left' : 'right',
+                        padding:'8px 0', fontSize:11, color:'var(--gray-400)',
+                        textTransform:'uppercase', letterSpacing:'0.07em',
+                        borderBottom:'1px solid var(--gray-200)'}}>
+                        {h === 'Description' ? h : <span style={{float:'right'}}>{h}</span>}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
                   {lines.length === 0 ? (
-                    <tr><td colSpan={3} style={{padding:'12px 0', color:'var(--gray-400)', fontSize:13}}>
+                    <tr><td colSpan={5} style={{padding:'12px 0', color:'var(--gray-400)', fontSize:13}}>
                       No pricing set — add a cost line below.
                     </td></tr>
-                  ) : lines.map((l, i) => (
-                    <tr key={i}>
-                      <td style={{padding:'10px 0', fontSize:13, borderBottom:'1px solid var(--gray-100)'}}>{l.label}</td>
-                      <td style={{textAlign:'right', padding:'10px 0', fontSize:13, fontWeight:500,
-                        borderBottom:'1px solid var(--gray-100)'}}>
-                        {formatCurrency(l.amount, l.currency)}
-                      </td>
-                      <td style={{textAlign:'right', padding:'10px 0', fontSize:13, fontWeight:700,
-                        color:'var(--navy)', borderBottom:'1px solid var(--gray-100)'}}>
-                        Rp {Math.round(toIDR(l.amount, l.currency, effU, effS)).toLocaleString('id-ID')}
-                      </td>
-                    </tr>
-                  ))}
+                  ) : lines.map((l, i) => {
+                    const lineTotal = l.amount * (l.qty || 1)
+                    return (
+                      <tr key={i}>
+                        <td style={{padding:'10px 0', fontSize:13, borderBottom:'1px solid var(--gray-100)'}}>{l.label}</td>
+                        <td style={{textAlign:'right', padding:'10px 0', fontSize:13, borderBottom:'1px solid var(--gray-100)', color:'var(--gray-400)'}}>{l.qty || 1}</td>
+                        <td style={{textAlign:'right', padding:'10px 0', fontSize:13, borderBottom:'1px solid var(--gray-100)'}}>{formatCurrency(l.amount, l.currency)}</td>
+                        <td style={{textAlign:'right', padding:'10px 0', fontSize:13, fontWeight:600, borderBottom:'1px solid var(--gray-100)'}}>{formatCurrency(lineTotal, l.currency)}</td>
+                        <td style={{textAlign:'right', padding:'10px 0', fontSize:13, fontWeight:700, color:'var(--navy)', borderBottom:'1px solid var(--gray-100)'}}>
+                          Rp {Math.round(toIDR(lineTotal, l.currency, effU, effS)).toLocaleString('id-ID')}
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
 
-              {/* Add cost line */}
+              {/* Add cost line with qty */}
               <div className="inv-add-cost">
                 <div className="inv-section-label">ADD COST LINE</div>
-                <div style={{display:'flex', gap:8, flexWrap:'wrap', marginTop:8}}>
-                  <input className="form-input" style={{flex:3, minWidth:150}} type="text"
+                <div style={{display:'flex', gap:8, flexWrap:'wrap', marginTop:8, alignItems:'flex-end'}}>
+                  <input className="form-input" style={{flex:3, minWidth:140}} type="text"
                     placeholder="Description (e.g. Handling fee)"
                     value={costDesc} onChange={e => setCostDesc(e.target.value)} />
-                  <input className="form-input" style={{flex:1, minWidth:80}} type="number"
-                    min="0" step="0.01" placeholder="Amount"
-                    value={costAmt} onChange={e => setCostAmt(e.target.value)} />
+                  <div style={{display:'flex', flexDirection:'column', gap:2}}>
+                    <div className="text-sm text-muted">Qty</div>
+                    <input className="form-input" style={{width:60}} type="number" min="1" step="1"
+                      value={costQty} onChange={e => setCostQty(e.target.value)} />
+                  </div>
+                  <div style={{display:'flex', flexDirection:'column', gap:2}}>
+                    <div className="text-sm text-muted">Unit price</div>
+                    <input className="form-input" style={{width:100}} type="number" min="0" step="0.01"
+                      placeholder="Amount" value={costAmt} onChange={e => setCostAmt(e.target.value)} />
+                  </div>
                   <select className="form-select" style={{width:80}}
                     value={costCur} onChange={e => setCostCur(e.target.value)}>
                     <option>IDR</option><option>USD</option>
@@ -300,18 +358,23 @@ export default function InvoiceTab({
                     <Plus size={13} /> {savingCost ? '…' : 'Add cost'}
                   </button>
                 </div>
+                {costAmt && costQty && parseInt(costQty) > 1 && (
+                  <div className="text-sm text-muted" style={{marginTop:6}}>
+                    = {parseInt(costQty)} × {formatCurrency(parseFloat(costAmt)||0, costCur)} = {formatCurrency((parseFloat(costAmt)||0) * (parseInt(costQty)||1), costCur)}
+                  </div>
+                )}
               </div>
 
-              {/* Conversion rates */}
+              {/* FX rates */}
               <div className="inv-fx-box">
                 <div className="inv-section-label">CONVERSION RATES (this invoice only)</div>
                 <div style={{display:'flex', gap:12, marginTop:8, flexWrap:'wrap', alignItems:'flex-end'}}>
-                  <div style={{flex:1, minWidth:140}}>
+                  <div style={{flex:1, minWidth:130}}>
                     <div className="text-sm text-muted" style={{marginBottom:4}}>USD → IDR</div>
                     <input className="form-input" type="number" placeholder={DEFAULT_USD_IDR}
                       value={usdRate} onChange={e => setUsdRate(e.target.value)} />
                   </div>
-                  <div style={{flex:1, minWidth:140}}>
+                  <div style={{flex:1, minWidth:130}}>
                     <div className="text-sm text-muted" style={{marginBottom:4}}>SGD → IDR</div>
                     <input className="form-input" type="number" placeholder={DEFAULT_SGD_IDR}
                       value={sgdRate} onChange={e => setSgdRate(e.target.value)} />
@@ -323,7 +386,7 @@ export default function InvoiceTab({
                 </div>
               </div>
 
-              {/* Total IDR */}
+              {/* Total */}
               <div className="cost-total" style={{marginTop:16}}>
                 <span className="cost-total-label">Total Due (IDR)</span>
                 <span className="cost-total-value">
@@ -338,7 +401,7 @@ export default function InvoiceTab({
                   <Printer size={13} /> Download PDF
                 </button>
                 <button className="btn btn-green" onClick={() => setConfirmId(selected.id)}>
-                  <CheckCircle size={14} /> Complete Invoice
+                  <CheckCircle size={14} /> Complete → Cost Tab
                 </button>
               </div>
             </div>
@@ -352,14 +415,14 @@ export default function InvoiceTab({
           <div className="confirm-modal">
             <h3>Complete this invoice?</h3>
             <p>
-              This will lock the total, move the order to <strong>Completed</strong>, and remove it from
-              all active tabs. You can revert it from Completed if needed.
+              This will move the order to the <strong>Cost tab</strong> where you can add cost lines
+              to calculate profit. It can be reverted from there if needed.
             </p>
             <div className="confirm-actions">
               <button className="btn btn-outline" onClick={() => setConfirmId(null)}>Cancel</button>
               <button className="btn btn-green" disabled={completing}
                 onClick={() => handleComplete(confirmId)}>
-                {completing ? 'Processing…' : '✓ Yes, Complete'}
+                {completing ? 'Processing…' : '✓ Move to Cost Tab'}
               </button>
             </div>
           </div>

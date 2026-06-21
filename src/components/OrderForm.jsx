@@ -47,9 +47,20 @@ const emptyForm = {
   additional_notes:     '',
 }
 
-export default function OrderForm({ onSubmit, onClose, customers = [], addCustomer }) {
+export default function OrderForm({ onSubmit, onClose, customers = [], addCustomer, initialData = null }) {
+  const isEdit = !!initialData
+
   const [step, setStep]     = useState(0)
-  const [form, setForm]     = useState(emptyForm)
+  const [form, setForm]     = useState(() => initialData ? {
+    ...emptyForm, ...initialData,
+    additional_costs: initialData.additional_costs || [],
+    weight_unit:      initialData.weight_unit || 'kg',
+    vol_divisor:      initialData.vol_divisor || 5000,
+    qty:              initialData.qty || 1,
+    eta_date:         initialData.eta_date || '',
+    goods_link:       initialData.goods_link || '',
+    order_tracking_link: initialData.order_tracking_link || '',
+  } : emptyForm)
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState('')
 
@@ -59,6 +70,7 @@ export default function OrderForm({ onSubmit, onClose, customers = [], addCustom
   const isShipping = form.service_type === 'shipping_only'
 
   const [showSuggestions, setShowSuggestions] = useState(false)
+  const [useActualWeight, setUseActualWeight] = useState(false)
 
   // Autofill from customer record — closes dropdown
   const autofill = (customer) => {
@@ -134,45 +146,63 @@ export default function OrderForm({ onSubmit, onClose, customers = [], addCustom
     setSaving(true); setError('')
     try {
       const p = { ...form }
-      // Normalise weights
+
+      // Sanitize all numeric fields — empty string → null (fixes "invalid input syntax for numeric")
+      const toNum = (v) => { const n = parseFloat(v); return isNaN(n) ? null : n }
+      const toInt = (v) => { const n = parseInt(v);   return isNaN(n) ? null : n }
+
       if (form.weight_unit === 'lb') {
-        p.weight_lb = form.weight_lb || null
-        p.weight_kg = form.weight_lb ? +(parseFloat(form.weight_lb) * 0.453592).toFixed(3) : null
+        p.weight_lb = toNum(form.weight_lb)
+        p.weight_kg = p.weight_lb ? +(p.weight_lb * 0.453592).toFixed(3) : null
       } else {
-        p.weight_kg = form.weight_kg || null
-        p.weight_lb = form.weight_kg ? +(parseFloat(form.weight_kg) * 2.20462).toFixed(3) : null
+        p.weight_kg = toNum(form.weight_kg)
+        p.weight_lb = p.weight_kg ? +(p.weight_kg * 2.20462).toFixed(3) : null
       }
       ;['length_cm','width_cm','height_cm','length_in','width_in','height_in'].forEach(k => {
-        p[k] = form[k] ? parseFloat(form[k]) : null
+        p[k] = toNum(form[k])
       })
-      p.qty         = parseInt(form.qty) || 1
-      p.rate_per_kg = parseFloat(form.rate_per_kg) || null
-      p.eta_date    = form.eta_date || null
+      p.qty                    = toInt(form.qty) || 1
+      p.rate_per_kg            = toNum(form.rate_per_kg)
+      p.full_service_price     = toNum(form.full_service_price)
+      p.eta_date               = form.eta_date || null
+      p.vol_divisor            = useActualWeight ? null : (toInt(form.vol_divisor) || 5000)
+      p.use_actual_weight      = useActualWeight
+
+      // Clean additional_costs amounts
+      p.additional_costs = (form.additional_costs || []).map(c => ({
+        ...c,
+        amount: toNum(c.amount) || 0,
+        qty:    toInt(c.qty)    || 1,
+      }))
 
       // Store computed price
-      if (pricing) {
-        p.computed_base_price      = pricing.basePrice
-        p.computed_total           = pricing.total
-        p.computed_currency        = pricing.currency
-        p.chargeable_weight_kg     = pricing.weightBreakdown.chargeableKg
+      if (pricing && !useActualWeight) {
+        p.computed_base_price  = pricing.basePrice
+        p.computed_total       = pricing.total
+        p.computed_currency    = pricing.currency
+        p.chargeable_weight_kg = pricing.weightBreakdown.chargeableKg
+      } else if (isShipping && useActualWeight) {
+        const actualKg   = p.weight_kg || 0
+        const rate       = p.rate_per_kg || 0
+        const addlTotal  = p.additional_costs.reduce((s, c) => s + (c.amount * (c.qty || 1)), 0)
+        p.chargeable_weight_kg = actualKg
+        p.computed_base_price  = +(actualKg * rate).toFixed(2)
+        p.computed_total       = +(p.computed_base_price + addlTotal).toFixed(2)
+        p.computed_currency    = form.rate_currency
       } else if (isFull && form.full_service_price) {
-        p.computed_base_price  = parseFloat(form.full_service_price)
-        p.computed_total       = parseFloat(form.full_service_price)
+        p.computed_base_price  = toNum(form.full_service_price)
+        p.computed_total       = toNum(form.full_service_price)
         p.computed_currency    = form.full_service_currency
       }
 
-      // Auto-save new customer if name not already in list
-      const name = form.customer_name.trim()
-      const alreadyExists = customers.some(c => c.name.toLowerCase() === name.toLowerCase())
-      if (name && !alreadyExists && addCustomer) {
-        try {
-          await addCustomer({
-            name,
-            contact_number: form.contact_number || null,
-            address:        form.delivery_address || null,
-          })
-        } catch (e) {
-          console.warn('Auto-save customer failed (non-fatal):', e)
+      // Auto-save new customer (only on new order creation, not edits)
+      if (!isEdit) {
+        const custName = form.customer_name.trim()
+        const alreadyExists = customers.some(c => c.name.toLowerCase() === custName.toLowerCase())
+        if (custName && !alreadyExists && addCustomer) {
+          try {
+            await addCustomer({ name: custName, contact_number: form.contact_number || null, address: form.delivery_address || null })
+          } catch (e) { console.warn('Auto-save customer failed:', e) }
         }
       }
 
@@ -191,7 +221,7 @@ export default function OrderForm({ onSubmit, onClose, customers = [], addCustom
         <div className="wizard-header">
           <div className="flex-between">
             <div>
-              <div className="wizard-title">New Order</div>
+              <div className="wizard-title">{isEdit ? 'Edit Order' : 'New Order'}</div>
               <div className="wizard-subtitle">Step {step + 1} of {STEPS.length} — {STEPS[step]}</div>
             </div>
             <button className="btn-ghost" onClick={onClose}><X size={18} /></button>
@@ -465,18 +495,29 @@ export default function OrderForm({ onSubmit, onClose, customers = [], addCustom
 
                 {/* Volumetric divisor */}
                 <div className="form-group">
-                  <label className="form-label">Volumetric Divisor</label>
-                  <div className="radio-group">
+                  <label className="form-label">Weight Calculation</label>
+                  <div className="radio-group" style={{flexWrap:'wrap'}}>
                     {[5000, 6000].map(d => (
-                      <label key={d} className={`radio-pill ${form.vol_divisor === d ? 'selected' : ''}`}>
+                      <label key={d} className={`radio-pill ${!useActualWeight && form.vol_divisor === d ? 'selected' : ''}`}>
                         <input type="radio" name="divisor" value={d}
-                          checked={form.vol_divisor === d}
-                          onChange={() => set('vol_divisor', d)} />
-                        {d.toLocaleString()}
+                          checked={!useActualWeight && form.vol_divisor === d}
+                          onChange={() => { set('vol_divisor', d); setUseActualWeight(false) }} />
+                        Volumetric ÷{d.toLocaleString()}
                       </label>
                     ))}
+                    <label className={`radio-pill ${useActualWeight ? 'selected' : ''}`}>
+                      <input type="radio" name="divisor" value="actual"
+                        checked={useActualWeight}
+                        onChange={() => setUseActualWeight(true)} />
+                      Use actual weight only
+                    </label>
                   </div>
-                  <div className="form-hint">5000 = standard air · 6000 = sea / some couriers</div>
+                  {!useActualWeight && (
+                    <div className="form-hint">5000 = standard air · 6000 = sea / some couriers</div>
+                  )}
+                  {useActualWeight && (
+                    <div className="form-hint" style={{color:'var(--amber)'}}>Volumetric ignored — actual weight used as chargeable weight</div>
+                  )}
                 </div>
 
                 {/* Weight breakdown */}

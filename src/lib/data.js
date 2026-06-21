@@ -34,6 +34,7 @@ export function useAppData() {
   const [completedOrders, setCompleted] = useState([])
   const [carriers, setCarriers]         = useState([])
   const [customers, setCustomers]       = useState([])
+  const [costs, setCosts]               = useState([])
   const [loading, setLoading]           = useState(true)
   const [error, setError]               = useState(null)
 
@@ -41,13 +42,14 @@ export function useAppData() {
   const reload = useCallback(async () => {
     setLoading(true); setError(null)
     try {
-      const [o, t, inv, c, car, cust] = await Promise.all([
+      const [o, t, inv, c, car, cust, co] = await Promise.all([
         supabase.from('orders').select('*').order('order_date', { ascending: false }),
         supabase.from('tracking_status').select('*'),
         supabase.from('invoices').select('*'),
         supabase.from('completed_orders').select('*').order('completed_at', { ascending: false }),
         supabase.from('carriers').select('*').eq('active', true),
         supabase.from('customers').select('*').order('name'),
+        supabase.from('costs').select('*').order('created_at', { ascending: false }),
       ])
       if (o.error)    throw o.error
       if (t.error)    throw t.error
@@ -55,6 +57,7 @@ export function useAppData() {
       if (c.error)    throw c.error
       if (car.error)  throw car.error
       if (cust.error) throw cust.error
+      if (co.error)   throw co.error
 
       setOrders(o.data      || [])
       setTracking(t.data    || [])
@@ -62,6 +65,7 @@ export function useAppData() {
       setCompleted(c.data   || [])
       setCarriers(car.data  || [])
       setCustomers(cust.data || [])
+      setCosts(co.data      || [])
     } catch (err) {
       console.error('useAppData reload:', err)
       setError(err)
@@ -179,25 +183,27 @@ export function useAppData() {
     })
   }, [invoices, upsertInvoice])
 
-  // ── COMPLETE ORDER ────────────────────────────────────────
-  // Mirrors JEI: snapshot everything → insert completed_orders → delete active rows
+  // ── COMPLETE ORDER → moves to COSTS (not completed_orders) ──
   const completeOrder = useCallback(async (orderId) => {
-    const order      = orders.find(o => o.id === orderId)
+    const order       = orders.find(o => o.id === orderId)
     const trackingRow = tracking.find(t => t.order_id === orderId)
     const invoiceRow  = invoices.find(i => i.order_id === orderId)
     if (!order) throw new Error('Order not found')
 
-    // Insert denormalised snapshot (historical record stable even if schema changes)
-    const { error: ie } = await supabase.from('completed_orders').insert({
+    // Insert into costs table (not completed_orders yet)
+    const { error: ce } = await supabase.from('costs').insert({
       original_order_id: orderId,
       order_snapshot:    order,
       tracking_snapshot: trackingRow || null,
       invoice_snapshot:  invoiceRow  || null,
+      cost_lines:        [],
+      total_revenue:     invoiceRow?.total || order.computed_total || 0,
+      total_cost:        0,
+      currency:          invoiceRow?.currency || order.computed_currency || order.rate_currency || 'USD',
+      usd_rate:          invoiceRow?.usd_rate || null,
     })
-    if (ie) throw ie
+    if (ce) throw ce
 
-    // Remove from all active tables (FK cascade handles tracking + invoices,
-    // but explicit deletes for clarity)
     await supabase.from('invoices').delete().eq('order_id', orderId)
     await supabase.from('tracking_status').delete().eq('order_id', orderId)
     const { error: de } = await supabase.from('orders').delete().eq('id', orderId)
@@ -205,6 +211,69 @@ export function useAppData() {
 
     await reload()
   }, [orders, tracking, invoices, reload])
+
+  // ── COSTS CRUD ────────────────────────────────────────────
+  const addCostLine = useCallback(async (costId, line) => {
+    const rec = costs.find(c => c.id === costId)
+    if (!rec) throw new Error('Cost record not found')
+    const newLines = [...(rec.cost_lines || []), line]
+    const newTotal = newLines.reduce((s, l) => s + (parseFloat(l.amount) * (parseInt(l.qty) || 1)), 0)
+    const { error } = await supabase.from('costs').update({
+      cost_lines: newLines,
+      total_cost: newTotal,
+      updated_at: new Date().toISOString(),
+    }).eq('id', costId)
+    if (error) throw error
+    setCosts(prev => prev.map(c => c.id === costId
+      ? { ...c, cost_lines: newLines, total_cost: newTotal }
+      : c
+    ))
+  }, [costs])
+
+  const removeCostLine = useCallback(async (costId, lineIndex) => {
+    const rec = costs.find(c => c.id === costId)
+    if (!rec) throw new Error('Cost record not found')
+    const newLines = (rec.cost_lines || []).filter((_, i) => i !== lineIndex)
+    const newTotal = newLines.reduce((s, l) => s + (parseFloat(l.amount) * (parseInt(l.qty) || 1)), 0)
+    const { error } = await supabase.from('costs').update({
+      cost_lines: newLines,
+      total_cost: newTotal,
+      updated_at: new Date().toISOString(),
+    }).eq('id', costId)
+    if (error) throw error
+    setCosts(prev => prev.map(c => c.id === costId
+      ? { ...c, cost_lines: newLines, total_cost: newTotal }
+      : c
+    ))
+  }, [costs])
+
+  const updateCostNotes = useCallback(async (costId, notes, usdRate) => {
+    const updates = { notes, updated_at: new Date().toISOString() }
+    if (usdRate != null) updates.usd_rate = usdRate
+    const { error } = await supabase.from('costs').update(updates).eq('id', costId)
+    if (error) throw error
+    setCosts(prev => prev.map(c => c.id === costId ? { ...c, ...updates } : c))
+  }, [])
+
+  // Move from costs → completed_orders (final step)
+  const completeCost = useCallback(async (costId) => {
+    const rec = costs.find(c => c.id === costId)
+    if (!rec) throw new Error('Cost record not found')
+
+    const { error: ie } = await supabase.from('completed_orders').insert({
+      original_order_id: rec.original_order_id,
+      order_snapshot:    rec.order_snapshot,
+      tracking_snapshot: rec.tracking_snapshot,
+      invoice_snapshot:  rec.invoice_snapshot,
+      cost_snapshot:     { cost_lines: rec.cost_lines, total_cost: rec.total_cost, total_revenue: rec.total_revenue, currency: rec.currency, usd_rate: rec.usd_rate },
+    })
+    if (ie) throw ie
+
+    const { error: de } = await supabase.from('costs').delete().eq('id', costId)
+    if (de) throw de
+
+    await reload()
+  }, [costs, reload])
 
   // Revert completed → back to active (JEI pattern: sets completed=false)
   // For our snapshot model: re-insert order/tracking/invoice from snapshot
@@ -274,7 +343,7 @@ export function useAppData() {
 
   return {
     // Data
-    orders, tracking, invoices, completedOrders, carriers, customers,
+    orders, tracking, invoices, completedOrders, carriers, customers, costs,
     loading, error,
     // Core
     reload, patchOrder, patchInvoice,
@@ -284,8 +353,12 @@ export function useAppData() {
     updateTracking, advanceStage,
     // Invoices
     upsertInvoice, addInvoiceCost, lockInvoiceTotal,
-    // Complete / archive
-    completeOrder, revertCompleted, deleteCompleted, cleanupExpired,
+    // Complete invoice → costs
+    completeOrder,
+    // Costs
+    addCostLine, removeCostLine, updateCostNotes, completeCost,
+    // Completed archive
+    revertCompleted, deleteCompleted, cleanupExpired,
     // Customers
     addCustomer, updateCustomer, deleteCustomer,
   }

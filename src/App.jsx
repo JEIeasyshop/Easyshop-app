@@ -1,6 +1,6 @@
 // src/App.jsx
 import { useState, useEffect } from 'react'
-import { Package, Truck, FileText, Archive, DollarSign, Users } from 'lucide-react'
+import { Package, Truck, FileText, Receipt, Archive, Users, DollarSign } from 'lucide-react'
 import { getSession, onAuthStateChange, signOut, getUserRole } from './lib/auth'
 import { useAppData } from './lib/data'
 import Login          from './components/Login'
@@ -8,6 +8,7 @@ import ErrorBoundary  from './components/ErrorBoundary'
 import OrdersTab      from './components/OrdersTab'
 import TrackingTab    from './components/TrackingTab'
 import InvoiceTab     from './components/InvoiceTab'
+import CostTab        from './components/CostTab'
 import CompletedTab   from './components/CompletedTab'
 import CustomersTab   from './components/CustomersTab'
 import FinanceTab     from './components/FinanceTab'
@@ -16,6 +17,7 @@ const ALL_TABS = [
   { id: 'orders',    label: 'Orders',    Icon: Package,    ownerOnly: false },
   { id: 'tracking',  label: 'Tracking',  Icon: Truck,      ownerOnly: false },
   { id: 'invoices',  label: 'Invoices',  Icon: FileText,   ownerOnly: false },
+  { id: 'cost',      label: 'Cost',      Icon: Receipt,    ownerOnly: false },
   { id: 'completed', label: 'Completed', Icon: Archive,    ownerOnly: false },
   { id: 'customers', label: 'Customers', Icon: Users,      ownerOnly: false },
   { id: 'finance',   label: 'Finance',   Icon: DollarSign, ownerOnly: true  },
@@ -25,12 +27,14 @@ function Dashboard({ session, role }) {
   const [tab, setTab] = useState('orders')
 
   const {
-    orders, tracking, invoices, completedOrders, carriers, customers,
+    orders, tracking, invoices, completedOrders, carriers, customers, costs,
     loading, error,
     addOrder, updateOrder,
     updateTracking, advanceStage,
     upsertInvoice, addInvoiceCost, lockInvoiceTotal,
-    completeOrder, revertCompleted, deleteCompleted, cleanupExpired,
+    completeOrder,
+    addCostLine, removeCostLine, updateCostNotes, completeCost,
+    revertCompleted, deleteCompleted, cleanupExpired,
     addCustomer, updateCustomer, deleteCustomer,
   } = useAppData()
 
@@ -79,8 +83,8 @@ function Dashboard({ session, role }) {
           {tab === 'orders' && (
             <OrdersTab
               orders={orders} tracking={tracking}
-              addOrder={addOrder} customers={customers}
-              addCustomer={addCustomer}
+              addOrder={addOrder} updateOrder={updateOrder}
+              customers={customers} addCustomer={addCustomer}
             />
           )}
           {tab === 'tracking' && (
@@ -94,6 +98,15 @@ function Dashboard({ session, role }) {
               orders={orders} tracking={tracking} invoices={invoices}
               addInvoiceCost={addInvoiceCost} lockInvoiceTotal={lockInvoiceTotal}
               completeOrder={completeOrder}
+            />
+          )}
+          {tab === 'cost' && (
+            <CostTab
+              costs={costs}
+              addCostLine={addCostLine}
+              removeCostLine={removeCostLine}
+              updateCostNotes={updateCostNotes}
+              completeCost={completeCost}
             />
           )}
           {tab === 'completed' && (
@@ -113,10 +126,7 @@ function Dashboard({ session, role }) {
             />
           )}
           {tab === 'finance' && role === 'owner' && (
-            <FinanceTab
-              completedOrders={completedOrders}
-              orders={orders}
-            />
+            <FinanceTab completedOrders={completedOrders} />
           )}
         </ErrorBoundary>
       </main>

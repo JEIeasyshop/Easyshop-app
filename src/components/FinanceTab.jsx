@@ -1,147 +1,75 @@
-// src/components/FinanceTab.jsx — owner only
-// Shows: total revenue, monthly breakdown, most returning customers
+// src/components/FinanceTab.jsx — owner only — full financial dashboard
 import { useState, useMemo } from 'react'
-import { DollarSign, TrendingUp, Users, BarChart2, Calendar } from 'lucide-react'
+import { DollarSign, TrendingUp, TrendingDown, Percent, List } from 'lucide-react'
 import { formatCurrency } from '../lib/pricing'
 
 const DIR = { us_jkt: 'US → JKT', jkt_us: 'JKT → US', other: 'Other' }
-const SVC = { full_service: 'Full Service', shipping_only: 'Shipping Only' }
-
-// Default USD→IDR rate for display
 const DEFAULT_FX = 15850
 
-function MonthBar({ label, value, max, currency }) {
-  const pct = max > 0 ? Math.round((value / max) * 100) : 0
-  return (
-    <div style={{marginBottom:12}}>
-      <div className="flex-between text-sm" style={{marginBottom:4}}>
-        <span style={{fontWeight:500}}>{label}</span>
-        <span style={{fontWeight:700, color:'var(--navy)'}}>{formatCurrency(value, currency)}</span>
-      </div>
-      <div style={{background:'var(--gray-100)', borderRadius:4, height:8, overflow:'hidden'}}>
-        <div style={{
-          width:`${pct}%`, height:'100%',
-          background:'linear-gradient(90deg, var(--navy), var(--navy-light))',
-          borderRadius:4, transition:'width 0.4s ease'
-        }} />
-      </div>
-    </div>
-  )
-}
+export default function FinanceTab({ completedOrders }) {
+  const [period, setPeriod]   = useState('all')
+  const [currency, setCurrency] = useState('IDR')
+  const [expandedId, setExpandedId] = useState(null)
 
-export default function FinanceTab({ completedOrders, orders = [] }) {
-  const [period, setPeriod] = useState('all')  // 'all' | '3m' | '6m' | '12m'
-  const [currency, setCurrency] = useState('USD')
-
-  // Filter by period
   const periodOrders = useMemo(() => {
     if (period === 'all') return completedOrders
     const months = parseInt(period)
-    const cutoff = new Date()
-    cutoff.setMonth(cutoff.getMonth() - months)
+    const cutoff = new Date(); cutoff.setMonth(cutoff.getMonth() - months)
     return completedOrders.filter(c => new Date(c.completed_at) >= cutoff)
   }, [completedOrders, period])
 
-  // Revenue from completed (locked invoice total)
-  const getAmt = (c) => {
-    const inv = c.invoice_snapshot || {}
-    const ord = c.order_snapshot   || {}
-    const rawAmt = Number(inv.total || ord.computed_total || 0)
-    const rawCur = inv.currency || ord.computed_currency || ord.rate_currency || 'USD'
-    if (currency === 'IDR') {
-      const fxU = Number(inv.usd_rate || DEFAULT_FX)
-      if (rawCur === 'IDR') return rawAmt
-      return rawAmt * fxU
-    }
-    return rawAmt // show in original USD
+  const toDisplay = (amount, cur, fx) => {
+    const rate = parseFloat(fx) || DEFAULT_FX
+    if (currency === 'IDR') return cur === 'IDR' ? amount : amount * rate
+    return cur === 'USD' ? amount : amount / rate
   }
 
-  // ── KPIs ──────────────────────────────────────────────────
-  const totalRevenue = periodOrders.reduce((s, c) => s + getAmt(c), 0)
-  const avgPerOrder  = periodOrders.length ? totalRevenue / periodOrders.length : 0
+  const getFinancials = (rec) => {
+    const inv      = rec.invoice_snapshot  || {}
+    const cost     = rec.cost_snapshot     || {}
+    const ord      = rec.order_snapshot    || {}
+    const fx       = cost.usd_rate || inv.usd_rate || DEFAULT_FX
+    const revRaw   = Number(inv.total || ord.computed_total || 0)
+    const revCur   = inv.currency || ord.rate_currency || 'USD'
+    const costRaw  = Number(cost.total_cost || 0)
+    const costCur  = cost.currency || 'USD'
+    const rev      = toDisplay(revRaw, revCur, fx)
+    const cos      = toDisplay(costRaw, costCur, fx)
+    const profit   = rev - cos
+    const margin   = rev > 0 ? (profit / rev) * 100 : 0
+    return { rev, cos, profit, margin, fx, ord }
+  }
 
-  // Active orders (in flight)
-  const activeRevenue = orders.reduce((s, o) => s + Number(o.computed_total || 0), 0)
-
-  // ── Monthly breakdown ──────────────────────────────────────
-  const byMonth = useMemo(() => {
-    const m = {}
-    periodOrders.forEach(c => {
-      const d   = new Date(c.completed_at)
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-      const lbl = d.toLocaleString('en-GB', { month: 'short', year: 'numeric' })
-      if (!m[key]) m[key] = { label: lbl, amount: 0, count: 0 }
-      m[key].amount += getAmt(c)
-      m[key].count  += 1
-    })
-    return Object.entries(m)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([, v]) => v)
+  // Aggregate KPIs
+  const totals = useMemo(() => {
+    return periodOrders.reduce((acc, rec) => {
+      const { rev, cos, profit } = getFinancials(rec)
+      acc.revenue += rev
+      acc.cost    += cos
+      acc.profit  += profit
+      return acc
+    }, { revenue: 0, cost: 0, profit: 0 })
   }, [periodOrders, currency])
 
-  const maxMonthly = Math.max(...byMonth.map(m => m.amount), 1)
+  const totalMargin = totals.revenue > 0 ? (totals.profit / totals.revenue) * 100 : 0
 
-  // ── By direction ──────────────────────────────────────────
-  const byDir = useMemo(() => {
-    const d = {}
-    periodOrders.forEach(c => {
-      const key = (c.order_snapshot?.direction) || 'other'
-      d[key] = (d[key] || 0) + getAmt(c)
-    })
-    return d
-  }, [periodOrders, currency])
-
-  // ── By service type ───────────────────────────────────────
-  const bySvc = useMemo(() => {
-    const s = {}
-    periodOrders.forEach(c => {
-      const key = (c.order_snapshot?.service_type) || 'unknown'
-      s[key] = (s[key] || 0) + getAmt(c)
-    })
-    return s
-  }, [periodOrders, currency])
-
-  // ── Top customers ──────────────────────────────────────────
-  const topCustomers = useMemo(() => {
-    const map = {}
-    // Active orders
-    orders.forEach(o => {
-      const name = (o.customer_name || 'Unknown').trim()
-      if (!map[name]) map[name] = { name, revenue: 0, count: 0 }
-      map[name].count  += 1
-      map[name].revenue += Number(o.computed_total || 0)
-    })
-    // Completed orders
-    periodOrders.forEach(c => {
-      const name = (c.order_snapshot?.customer_name || 'Unknown').trim()
-      if (!map[name]) map[name] = { name, revenue: 0, count: 0 }
-      map[name].count  += 1
-      map[name].revenue += getAmt(c)
-    })
-    return Object.values(map)
-      .sort((a, b) => b.count - a.count || b.revenue - a.revenue)
-      .slice(0, 8)
-  }, [periodOrders, orders, currency])
-
-  const maxCustRev = Math.max(...topCustomers.map(c => c.revenue), 1)
+  const dispCur = currency === 'IDR' ? 'IDR' : 'USD'
 
   return (
     <div>
-      {/* Header + controls */}
+      {/* Header */}
       <div className="page-header-row">
         <div className="page-header" style={{marginBottom:0}}>
-          <h2>Finance & Summary</h2>
-          <p>Revenue recap across all completed orders</p>
+          <h2>Finance</h2>
+          <p>Revenue, cost, profit from all archived orders</p>
         </div>
         <div className="flex-center gap-8">
-          {/* Currency toggle */}
           <div className="pay-seg">
-            {['USD','IDR'].map(c => (
+            {['IDR','USD'].map(c => (
               <button key={c} className={`pay-seg-btn ${currency === c ? 'pay-seg-active' : ''}`}
                 onClick={() => setCurrency(c)}>{c}</button>
             ))}
           </div>
-          {/* Period filter */}
           <div className="pay-seg">
             {[['all','All'],['3m','3M'],['6m','6M'],['12m','12M']].map(([v,l]) => (
               <button key={v} className={`pay-seg-btn ${period === v ? 'pay-seg-active' : ''}`}
@@ -153,141 +81,157 @@ export default function FinanceTab({ completedOrders, orders = [] }) {
 
       {/* KPI cards */}
       <div className="kpi-grid kpi-grid-4 mt-16">
-        <div className="kpi-card">
-          <div className="stat-card-icon gold" style={{width:36,height:36,borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',marginBottom:12,background:'var(--gold-pale)'}}>
-            <DollarSign size={18} color="var(--amber)" />
+        {[
+          { icon: <DollarSign size={18} />, label: 'Total Revenue', val: formatCurrency(totals.revenue, dispCur), cls: 'gold' },
+          { icon: <TrendingDown size={18} />, label: 'Total Cost',  val: formatCurrency(totals.cost, dispCur),    cls: 'red'  },
+          { icon: <TrendingUp size={18} />, label: 'Net Profit',    val: formatCurrency(totals.profit, dispCur),  cls: totals.profit >= 0 ? 'green' : 'red' },
+          { icon: <Percent size={18} />,    label: 'Margin',        val: `${totalMargin.toFixed(1)}%`,            cls: totalMargin >= 0 ? 'green' : 'red' },
+        ].map(s => (
+          <div className="kpi-card" key={s.label}>
+            <div className={`stat-card-icon ${s.cls}`} style={{
+              width:36, height:36, borderRadius:8,
+              display:'flex', alignItems:'center', justifyContent:'center', marginBottom:12,
+              background: s.cls === 'gold' ? 'var(--gold-pale)' : s.cls === 'green' ? 'var(--green-bg)' : s.cls === 'red' ? 'var(--red-bg)' : 'var(--navy-pale)',
+              color:      s.cls === 'gold' ? 'var(--amber)' : s.cls === 'green' ? 'var(--green)' : s.cls === 'red' ? 'var(--red)' : 'var(--navy)',
+            }}>
+              {s.icon}
+            </div>
+            <div className="kpi-value" style={{fontSize:18}}>{s.val}</div>
+            <div className="kpi-label" style={{marginTop:4}}>{s.label}</div>
+            <div className="kpi-sub">{periodOrders.length} orders</div>
           </div>
-          <div className="kpi-value" style={{fontSize:20}}>{formatCurrency(totalRevenue, currency)}</div>
-          <div className="kpi-label" style={{marginTop:4}}>Total Revenue</div>
-          <div className="kpi-sub">from {periodOrders.length} completed orders</div>
-        </div>
-        <div className="kpi-card">
-          <div className="stat-card-icon navy" style={{width:36,height:36,borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',marginBottom:12,background:'var(--navy-pale)'}}>
-            <TrendingUp size={18} color="var(--navy)" />
-          </div>
-          <div className="kpi-value" style={{fontSize:20}}>{formatCurrency(avgPerOrder, currency)}</div>
-          <div className="kpi-label" style={{marginTop:4}}>Avg per Order</div>
-          <div className="kpi-sub">across completed period</div>
-        </div>
-        <div className="kpi-card">
-          <div className="stat-card-icon green" style={{width:36,height:36,borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',marginBottom:12,background:'var(--green-bg)'}}>
-            <BarChart2 size={18} color="var(--green)" />
-          </div>
-          <div className="kpi-value" style={{fontSize:20}}>{formatCurrency(activeRevenue, 'USD')}</div>
-          <div className="kpi-label" style={{marginTop:4}}>Pipeline Revenue</div>
-          <div className="kpi-sub">from {orders.length} active orders</div>
-        </div>
-        <div className="kpi-card">
-          <div className="stat-card-icon navy" style={{width:36,height:36,borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',marginBottom:12,background:'var(--navy-pale)'}}>
-            <Users size={18} color="var(--navy)" />
-          </div>
-          <div className="kpi-value" style={{fontSize:20}}>{topCustomers.length}</div>
-          <div className="kpi-label" style={{marginTop:4}}>Unique Customers</div>
-          <div className="kpi-sub">active + completed</div>
-        </div>
+        ))}
       </div>
 
-      {/* Monthly + breakdown row */}
-      <div style={{display:'grid', gridTemplateColumns:'2fr 1fr', gap:16, marginBottom:16}}>
-
-        {/* Monthly revenue chart */}
-        <div className="card">
-          <div className="card-header">
-            <h3><Calendar size={14} style={{marginRight:6, verticalAlign:'middle'}} />Monthly Revenue</h3>
-            <span className="text-sm text-muted">{byMonth.length} month{byMonth.length !== 1 ? 's' : ''}</span>
-          </div>
-          <div className="card-body">
-            {byMonth.length === 0
-              ? <p className="text-sm text-muted">No completed orders in this period.</p>
-              : byMonth.map((m, i) => (
-                <MonthBar key={i} label={m.label} value={m.amount} max={maxMonthly} currency={currency} />
-              ))
-            }
-          </div>
-        </div>
-
-        {/* Direction + service breakdown */}
-        <div style={{display:'flex', flexDirection:'column', gap:16}}>
-          <div className="card">
-            <div className="card-header"><h3>By Direction</h3></div>
-            <div className="card-body">
-              {Object.keys(byDir).length === 0
-                ? <p className="text-sm text-muted">No data yet</p>
-                : Object.entries(byDir).map(([k, v]) => (
-                  <div key={k} className="flex-between" style={{padding:'7px 0', borderBottom:'1px solid var(--gray-100)'}}>
-                    <span style={{fontSize:13}}>{DIR[k] || k}</span>
-                    <span style={{fontWeight:700, fontSize:13}}>{formatCurrency(v, currency)}</span>
-                  </div>
-                ))
-              }
-            </div>
-          </div>
-          <div className="card">
-            <div className="card-header"><h3>By Service</h3></div>
-            <div className="card-body">
-              {Object.keys(bySvc).length === 0
-                ? <p className="text-sm text-muted">No data yet</p>
-                : Object.entries(bySvc).map(([k, v]) => (
-                  <div key={k} className="flex-between" style={{padding:'7px 0', borderBottom:'1px solid var(--gray-100)'}}>
-                    <span style={{fontSize:13}}>{SVC[k] || k}</span>
-                    <span style={{fontWeight:700, fontSize:13}}>{formatCurrency(v, currency)}</span>
-                  </div>
-                ))
-              }
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Top customers */}
-      <div className="card">
+      {/* All completed orders table */}
+      <div className="card mt-16">
         <div className="card-header">
-          <h3><Users size={14} style={{marginRight:6, verticalAlign:'middle'}} />Most Returning Customers</h3>
-          <span className="text-sm text-muted">by order count</span>
+          <h3><List size={14} style={{marginRight:6, verticalAlign:'middle'}} />All Completed Orders</h3>
+          <span className="text-sm text-muted">{periodOrders.length} records</span>
         </div>
-        <div className="card-body">
-          {topCustomers.length === 0
-            ? <p className="text-sm text-muted">No customer data yet.</p>
-            : topCustomers.map((c, i) => (
-              <div key={c.name} style={{
-                display:'flex', alignItems:'center', gap:14,
-                padding:'10px 0', borderBottom: i < topCustomers.length - 1 ? '1px solid var(--gray-100)' : 'none'
-              }}>
-                {/* Rank */}
-                <div style={{
-                  width:28, height:28, borderRadius:'50%',
-                  background: i === 0 ? 'var(--gold)' : i === 1 ? 'var(--gray-200)' : i === 2 ? '#CD7F32' : 'var(--gray-100)',
-                  color: i < 3 ? 'var(--navy)' : 'var(--gray-400)',
-                  display:'flex', alignItems:'center', justifyContent:'center',
-                  fontFamily:'var(--font-brand)', fontWeight:800, fontSize:12, flexShrink:0,
-                }}>
-                  {i + 1}
-                </div>
-                {/* Name + bar */}
-                <div style={{flex:1}}>
-                  <div style={{fontWeight:700, fontSize:13, marginBottom:4}}>{c.name}</div>
-                  <div style={{background:'var(--gray-100)', borderRadius:4, height:6, overflow:'hidden'}}>
-                    <div style={{
-                      width:`${Math.round((c.revenue / maxCustRev) * 100)}%`,
-                      height:'100%', borderRadius:4,
-                      background: i === 0 ? 'var(--gold)' : 'var(--navy)',
-                      transition:'width 0.4s ease',
-                    }} />
-                  </div>
-                </div>
-                {/* Stats */}
-                <div style={{textAlign:'right', flexShrink:0}}>
-                  <div style={{fontWeight:700, fontSize:13, color:'var(--navy)'}}>
-                    {formatCurrency(c.revenue, currency)}
-                  </div>
-                  <div className="text-sm text-muted">
-                    {c.count} order{c.count !== 1 ? 's' : ''}
-                  </div>
-                </div>
-              </div>
-            ))
-          }
-        </div>
+        {periodOrders.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-icon"><DollarSign size={24} /></div>
+            <h3>No completed orders</h3>
+            <p>Archive orders from the Cost tab to see them here.</p>
+          </div>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Customer</th>
+                  <th>Direction</th>
+                  <th>Service</th>
+                  <th>Goods</th>
+                  <th style={{textAlign:'right'}}>Revenue</th>
+                  <th style={{textAlign:'right'}}>Cost</th>
+                  <th style={{textAlign:'right'}}>Profit</th>
+                  <th style={{textAlign:'right'}}>Margin</th>
+                </tr>
+              </thead>
+              <tbody>
+                {periodOrders.map(rec => {
+                  const { rev, cos, profit, margin, ord } = getFinancials(rec)
+                  const isExp = expandedId === rec.id
+                  const inv   = rec.invoice_snapshot  || {}
+                  const cost  = rec.cost_snapshot     || {}
+
+                  return <>
+                    <tr key={rec.id} style={{cursor:'pointer'}}
+                      onClick={() => setExpandedId(isExp ? null : rec.id)}>
+                      <td className="text-sm text-muted">
+                        {new Date(rec.completed_at).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}
+                      </td>
+                      <td style={{fontWeight:700}}>{ord.customer_name || '—'}</td>
+                      <td className="text-sm">{DIR[ord.direction] || ord.direction_other_note || 'Other'}</td>
+                      <td>
+                        <span className={`badge ${ord.service_type === 'full_service' ? 'badge-navy' : 'badge-gray'}`}>
+                          {ord.service_type === 'full_service' ? 'Full Service' : 'Shipping Only'}
+                        </span>
+                      </td>
+                      <td className="text-sm ellipsis" style={{maxWidth:160}}>{ord.goods_description || '—'}</td>
+                      <td style={{textAlign:'right', fontWeight:600, color:'var(--navy)'}}>
+                        {formatCurrency(rev, dispCur)}
+                      </td>
+                      <td style={{textAlign:'right', fontWeight:600, color:'var(--red)'}}>
+                        {formatCurrency(cos, dispCur)}
+                      </td>
+                      <td style={{textAlign:'right', fontWeight:700, color: profit >= 0 ? 'var(--green)' : 'var(--red)'}}>
+                        {formatCurrency(profit, dispCur)}
+                      </td>
+                      <td style={{textAlign:'right'}}>
+                        <span className={`badge ${margin >= 0 ? 'badge-green' : 'badge-red'}`}>
+                          {margin.toFixed(1)}%
+                        </span>
+                      </td>
+                    </tr>
+
+                    {/* Expanded detail */}
+                    {isExp && (
+                      <tr key={rec.id + '-exp'}>
+                        <td colSpan={9} style={{background:'var(--gray-50)', padding:'14px 20px'}}>
+                          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:20}}>
+                            <div>
+                              <div className="text-sm fw-700 text-muted" style={{marginBottom:6}}>INVOICE LINES</div>
+                              {(inv.additional_costs || []).length === 0
+                                ? <p className="text-sm text-muted">No invoice lines recorded</p>
+                                : (inv.additional_costs || []).map((l, i) => (
+                                  <div key={i} className="flex-between text-sm" style={{padding:'3px 0'}}>
+                                    <span>{l.description} {l.qty > 1 ? `×${l.qty}` : ''}</span>
+                                    <span>{formatCurrency(Number(l.amount) * (Number(l.qty)||1), l.currency || 'USD')}</span>
+                                  </div>
+                                ))
+                              }
+                            </div>
+                            <div>
+                              <div className="text-sm fw-700 text-muted" style={{marginBottom:6}}>COST LINES</div>
+                              {(cost.cost_lines || []).length === 0
+                                ? <p className="text-sm text-muted">No cost lines recorded</p>
+                                : (cost.cost_lines || []).map((l, i) => (
+                                  <div key={i} className="flex-between text-sm" style={{padding:'3px 0'}}>
+                                    <span style={{color:'var(--red)'}}>{l.description} {l.qty > 1 ? `×${l.qty}` : ''}</span>
+                                    <span style={{color:'var(--red)'}}>{formatCurrency(Number(l.amount) * (Number(l.qty)||1), l.currency || 'USD')}</span>
+                                  </div>
+                                ))
+                              }
+                            </div>
+                          </div>
+                          {ord.additional_notes && (
+                            <div className="text-sm text-muted" style={{marginTop:10}}>
+                              <strong>Notes:</strong> {ord.additional_notes}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </>
+                })}
+              </tbody>
+              {/* Totals footer */}
+              <tfoot>
+                <tr style={{background:'var(--navy)'}}>
+                  <td colSpan={5} style={{padding:'12px 16px', color:'rgba(255,255,255,0.6)', fontSize:12, fontWeight:700}}>
+                    TOTAL ({periodOrders.length} orders)
+                  </td>
+                  <td style={{textAlign:'right', padding:'12px 16px', fontWeight:800, color:'var(--gold)', fontFamily:'var(--font-brand)', fontSize:14}}>
+                    {formatCurrency(totals.revenue, dispCur)}
+                  </td>
+                  <td style={{textAlign:'right', padding:'12px 16px', fontWeight:800, color:'#FCA5A5', fontFamily:'var(--font-brand)', fontSize:14}}>
+                    {formatCurrency(totals.cost, dispCur)}
+                  </td>
+                  <td style={{textAlign:'right', padding:'12px 16px', fontWeight:800, color: totals.profit >= 0 ? '#6EE7B7' : '#FCA5A5', fontFamily:'var(--font-brand)', fontSize:14}}>
+                    {formatCurrency(totals.profit, dispCur)}
+                  </td>
+                  <td style={{textAlign:'right', padding:'12px 16px', fontWeight:800, color: totalMargin >= 0 ? '#6EE7B7' : '#FCA5A5', fontFamily:'var(--font-brand)', fontSize:14}}>
+                    {totalMargin.toFixed(1)}%
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   )
