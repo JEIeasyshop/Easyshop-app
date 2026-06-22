@@ -556,12 +556,10 @@ export function useAppData() {
     setCompleted(prev => prev.filter(c => c.id !== completedId))
   }, [])
 
-  // Cleanup auto-expired completed orders (run on mount)
+  // Auto-cleanup disabled — deletion is manual only via deleteCompleted
   const cleanupExpired = useCallback(async () => {
-    await supabase.from('completed_orders')
-      .delete().lt('auto_delete_after', new Date().toISOString())
-    await reload()
-  }, [reload])
+    // No-op: auto-delete removed per user request
+  }, [])
 
   // ── DELETE ORDER (removes from all active tables) ────────
   const deleteOrder = useCallback(async (orderId) => {

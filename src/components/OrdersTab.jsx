@@ -74,8 +74,6 @@ export default function OrdersTab({ orders, tracking, costs = [], addOrder, upda
 
   const inFlight  = orders.filter(o => { const t = getT(o.id); return t && !isFinalStage(o, t) }).length
   const delivered = orders.filter(o => { const t = getT(o.id); return t && isFinalStage(o, t) }).length
-  const totalRev  = orders.reduce((s, o) => s + Number(o.computed_total || 0), 0)
-  const revCur    = orders.find(o => o.computed_currency)?.computed_currency || 'USD'
 
   // Filter by search + stage chip
   const filtered = useMemo(() => {
@@ -174,10 +172,9 @@ export default function OrdersTab({ orders, tracking, costs = [], addOrder, upda
   return (
     <div>
       {/* KPI cards */}
-      <div className="kpi-grid">
+      <div className="kpi-grid" style={{gridTemplateColumns:'repeat(2,1fr)'}}>
         <div className="kpi-card"><div className="kpi-label">ACTIVE ORDERS</div><div className="kpi-value">{orders.length}</div><div className="kpi-sub">{inFlight} in flight · {delivered} delivered</div></div>
-        <div className="kpi-card"><div className="kpi-label">REVENUE (BOOKED)</div><div className="kpi-value">{formatCurrency(totalRev, revCur)}</div><div className="kpi-sub">all open orders</div></div>
-        <div className="kpi-card"><div className="kpi-label">DELIVERED</div><div className="kpi-value">{delivered}</div><div className="kpi-sub">awaiting invoice</div></div>
+        <div className="kpi-card"><div className="kpi-label">DELIVERED</div><div className="kpi-value">{delivered}</div><div className="kpi-sub">awaiting completion</div></div>
       </div>
 
       {/* Stage filter chips */}
