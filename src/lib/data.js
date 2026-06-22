@@ -156,49 +156,54 @@ export function useAppData() {
     // Auto-set tracking_done when final stage is reached
     const order   = orders.find(o => o.id === orderId)
     const costRec = costs.find(c => c.original_order_id === orderId)
-    if (order && costRec) {
-      const seq     = getStageSequence(order.service_type)
-      const isFinal = newStage === seq[seq.length - 1]
-      if (isFinal && !costRec.tracking_done) {
-        // Build updated tracking snapshot
-        const updatedTracking = { ...current, current_stage: newStage, stage_history: newHistory }
-        const liveInvoice = invoices.find(i => i.order_id === orderId)
+    if (!order || !costRec) return
 
-        const updates = {
-          tracking_done:     true,
-          order_snapshot:    order,
-          tracking_snapshot: updatedTracking,
-          invoice_snapshot:  liveInvoice || costRec.invoice_snapshot || null,
-          total_revenue:     liveInvoice?.total || order.computed_total || costRec.total_revenue || 0,
-          updated_at:        new Date().toISOString(),
-        }
-        await supabase.from('costs').update(updates).eq('id', costRec.id)
-        const updatedRec = { ...costRec, ...updates }
-        setCosts(prev => prev.map(c => c.id === costRec.id ? updatedRec : c))
+    const seq     = getStageSequence(order.service_type)
+    const isFinal = newStage === seq[seq.length - 1]
+    if (!isFinal) return
 
-        // Archive if all 3 done
-        if (updatedRec.invoice_done && updatedRec.cost_done) {
-          const { error: ie } = await supabase.from('completed_orders').insert({
-            original_order_id: orderId,
-            order_snapshot:    updatedRec.order_snapshot,
-            tracking_snapshot: updatedRec.tracking_snapshot || null,
-            invoice_snapshot:  updatedRec.invoice_snapshot  || null,
-            cost_snapshot: {
-              cost_lines:    updatedRec.cost_lines    || [],
-              total_cost:    updatedRec.total_cost    || 0,
-              total_revenue: updatedRec.total_revenue || 0,
-              currency:      updatedRec.currency      || 'USD',
-              usd_rate:      updatedRec.usd_rate      || null,
-            },
-          })
-          if (ie) throw ie
-          await supabase.from('costs').delete().eq('id', costRec.id)
-          if (liveInvoice) await supabase.from('invoices').delete().eq('order_id', orderId)
-          await supabase.from('tracking_status').delete().eq('order_id', orderId)
-          await supabase.from('orders').delete().eq('id', orderId)
-          await reload()
-        }
-      }
+    // Write tracking_done + fresh snapshots to DB
+    const liveInvoice = invoices.find(i => i.order_id === orderId)
+    const updatedTracking = { ...current, current_stage: newStage, stage_history: newHistory }
+    const { error: ue } = await supabase.from('costs').update({
+      tracking_done:     true,
+      order_snapshot:    order,
+      tracking_snapshot: updatedTracking,
+      invoice_snapshot:  liveInvoice || costRec.invoice_snapshot || null,
+      total_revenue:     liveInvoice?.total || order.computed_total || costRec.total_revenue || 0,
+      updated_at:        new Date().toISOString(),
+    }).eq('id', costRec.id)
+    if (ue) throw ue
+
+    // Re-read from DB to get authoritative flag state
+    const { data: freshRec, error: fe } = await supabase
+      .from('costs').select('*').eq('id', costRec.id).single()
+    if (fe) throw fe
+
+    setCosts(prev => prev.map(c => c.id === costRec.id ? freshRec : c))
+
+    // Archive if all 3 flags are now true
+    if (freshRec.tracking_done && freshRec.invoice_done && freshRec.cost_done) {
+      const { error: ie } = await supabase.from('completed_orders').insert({
+        original_order_id: orderId,
+        order_snapshot:    freshRec.order_snapshot,
+        tracking_snapshot: freshRec.tracking_snapshot || null,
+        invoice_snapshot:  freshRec.invoice_snapshot  || null,
+        cost_snapshot: {
+          cost_lines:    freshRec.cost_lines    || [],
+          total_cost:    freshRec.total_cost    || 0,
+          total_revenue: freshRec.total_revenue || 0,
+          currency:      freshRec.currency      || 'USD',
+          usd_rate:      freshRec.usd_rate      || null,
+        },
+      })
+      if (ie) throw ie
+
+      await supabase.from('costs').delete().eq('id', costRec.id)
+      await supabase.from('invoices').delete().eq('order_id', orderId)
+      await supabase.from('tracking_status').delete().eq('order_id', orderId)
+      await supabase.from('orders').delete().eq('id', orderId)
+      await reload()
     }
   }, [tracking, updateTracking, orders, costs, invoices, reload])
 
@@ -339,67 +344,98 @@ export function useAppData() {
   }, [])
 
   // Toggle tracking_done / invoice_done / cost_done.
-  // Uses current in-memory order/tracking/invoice state as snapshots (rows still exist at this point).
+  // Reads flags back from DB after writing to avoid React stale-state race conditions.
   const setDoneFlag = useCallback(async (costId, flag, value) => {
     const rec = costs.find(c => c.id === costId)
     if (!rec) throw new Error('Cost record not found')
 
     const orderId = rec.original_order_id
 
-    // Snapshot live data now (before any deletion)
-    const liveOrder   = orders.find(o => o.id === orderId)
+    // Step 1: Snapshot live data (still exists at this moment)
+    const liveOrder    = orders.find(o => o.id === orderId)
     const liveTracking = tracking.find(t => t.order_id === orderId)
     const liveInvoice  = invoices.find(i => i.order_id === orderId)
 
-    // Build the snapshot to write to cost row (keep freshest available)
-    const orderSnap   = liveOrder    || rec.order_snapshot
-    const trackSnap   = liveTracking || rec.tracking_snapshot
-    const invoiceSnap = liveInvoice  || rec.invoice_snapshot
+    const orderSnap   = liveOrder    || rec.order_snapshot    || null
+    const trackSnap   = liveTracking || rec.tracking_snapshot || null
+    const invoiceSnap = liveInvoice  || rec.invoice_snapshot  || null
 
-    // Write flag + update snapshots atomically
+    // Step 2: Write flag + fresh snapshots to DB
     const updates = {
-      [flag]:           value,
-      order_snapshot:   orderSnap,
-      tracking_snapshot: trackSnap  || null,
-      invoice_snapshot:  invoiceSnap || null,
-      total_revenue:    invoiceSnap?.total || liveOrder?.computed_total || rec.total_revenue || 0,
-      updated_at:       new Date().toISOString(),
+      [flag]:            value,
+      order_snapshot:    orderSnap,
+      tracking_snapshot: trackSnap,
+      invoice_snapshot:  invoiceSnap,
+      total_revenue:     invoiceSnap?.total || liveOrder?.computed_total || rec.total_revenue || 0,
+      updated_at:        new Date().toISOString(),
     }
-    const { error } = await supabase.from('costs').update(updates).eq('id', costId)
-    if (error) throw error
+    const { error: ue } = await supabase.from('costs').update(updates).eq('id', costId)
+    if (ue) throw ue
 
-    const updatedRec = { ...rec, ...updates }
-    setCosts(prev => prev.map(c => c.id === costId ? updatedRec : c))
+    // Step 3: Re-read from DB — this is the source of truth, avoids stale React state
+    const { data: freshRec, error: fe } = await supabase
+      .from('costs').select('*').eq('id', costId).single()
+    if (fe) throw fe
 
-    // Check if ALL 3 criteria are now met
-    if (updatedRec.tracking_done && updatedRec.invoice_done && updatedRec.cost_done) {
-      // Insert to completed_orders using the snapshots we just saved
+    // Update local state with fresh DB data
+    setCosts(prev => prev.map(c => c.id === costId ? freshRec : c))
+
+    // Step 4: Check ALL 3 flags in the fresh DB record
+    if (freshRec.tracking_done && freshRec.invoice_done && freshRec.cost_done) {
+      // Step 5: Insert completed_orders record
       const { error: ie } = await supabase.from('completed_orders').insert({
         original_order_id: orderId,
-        order_snapshot:    updatedRec.order_snapshot,
-        tracking_snapshot: updatedRec.tracking_snapshot || null,
-        invoice_snapshot:  updatedRec.invoice_snapshot  || null,
+        order_snapshot:    freshRec.order_snapshot,
+        tracking_snapshot: freshRec.tracking_snapshot  || null,
+        invoice_snapshot:  freshRec.invoice_snapshot   || null,
         cost_snapshot: {
-          cost_lines:    updatedRec.cost_lines    || [],
-          total_cost:    updatedRec.total_cost    || 0,
-          total_revenue: updatedRec.total_revenue || 0,
-          currency:      updatedRec.currency      || 'USD',
-          usd_rate:      updatedRec.usd_rate      || null,
+          cost_lines:    freshRec.cost_lines    || [],
+          total_cost:    freshRec.total_cost    || 0,
+          total_revenue: freshRec.total_revenue || 0,
+          currency:      freshRec.currency      || 'USD',
+          usd_rate:      freshRec.usd_rate      || null,
         },
       })
       if (ie) { console.error('Archive insert failed:', ie); throw ie }
 
-      // Clean up active rows
+      // Step 6: Clean up all active rows for this order (unconditional)
       await supabase.from('costs').delete().eq('id', costId)
-      if (liveInvoice)  await supabase.from('invoices').delete().eq('order_id', orderId)
-      if (liveTracking) await supabase.from('tracking_status').delete().eq('order_id', orderId)
-      if (liveOrder)    await supabase.from('orders').delete().eq('id', orderId)
+      await supabase.from('invoices').delete().eq('order_id', orderId)
+      await supabase.from('tracking_status').delete().eq('order_id', orderId)
+      await supabase.from('orders').delete().eq('id', orderId)
 
       await reload()
     }
   }, [costs, orders, tracking, invoices, reload])
 
-  // Manual fallback archive (called from completeCost button)
+  // Manual archive — for records where all 3 flags are already true but auto-archive didn't fire
+  const manualArchive = useCallback(async (costId) => {
+    const { data: freshRec, error: fe } = await supabase
+      .from('costs').select('*').eq('id', costId).single()
+    if (fe) throw fe
+
+    const orderId = freshRec.original_order_id
+    const { error: ie } = await supabase.from('completed_orders').insert({
+      original_order_id: orderId,
+      order_snapshot:    freshRec.order_snapshot,
+      tracking_snapshot: freshRec.tracking_snapshot || null,
+      invoice_snapshot:  freshRec.invoice_snapshot  || null,
+      cost_snapshot: {
+        cost_lines:    freshRec.cost_lines    || [],
+        total_cost:    freshRec.total_cost    || 0,
+        total_revenue: freshRec.total_revenue || 0,
+        currency:      freshRec.currency      || 'USD',
+        usd_rate:      freshRec.usd_rate      || null,
+      },
+    })
+    if (ie) throw ie
+
+    await supabase.from('costs').delete().eq('id', costId)
+    await supabase.from('invoices').delete().eq('order_id', orderId)
+    await supabase.from('tracking_status').delete().eq('order_id', orderId)
+    await supabase.from('orders').delete().eq('id', orderId)
+    await reload()
+  }, [reload])
   const _archiveCost = useCallback(async (costId, rec) => {
     const orderId = rec.original_order_id
     const [fo, ft, fi, fc] = await Promise.all([
@@ -548,7 +584,7 @@ export function useAppData() {
     // Complete invoice → costs
     completeOrder,
     // Costs
-    addCostLine, removeCostLine, updateCostNotes, setDoneFlag, completeCost,
+    addCostLine, removeCostLine, updateCostNotes, setDoneFlag, completeCost, manualArchive,
     // Completed archive
     revertCompleted, deleteCompleted, cleanupExpired,
     // Customers

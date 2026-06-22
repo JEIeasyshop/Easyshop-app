@@ -20,7 +20,7 @@ const ALL_TABS = [
   { id: 'cost',      label: 'Cost',      Icon: Receipt,    ownerOnly: false },
   { id: 'completed', label: 'Completed', Icon: Archive,    ownerOnly: false },
   { id: 'customers', label: 'Customers', Icon: Users,      ownerOnly: false },
-  { id: 'finance',   label: 'Finance',   Icon: DollarSign, ownerOnly: false },
+  { id: 'finance',   label: 'Finance',   Icon: DollarSign, ownerOnly: true  },
 ]
 
 function Dashboard({ session, role }) {
@@ -33,7 +33,7 @@ function Dashboard({ session, role }) {
     updateTracking, advanceStage,
     upsertInvoice, addInvoiceCost, removeInvoiceCost, lockInvoiceTotal,
     completeOrder,
-    addCostLine, removeCostLine, updateCostNotes, setDoneFlag, completeCost,
+    addCostLine, removeCostLine, updateCostNotes, setDoneFlag, completeCost, manualArchive,
     revertCompleted, deleteCompleted, cleanupExpired,
     addCustomer, updateCustomer, deleteCustomer,
   } = useAppData()
@@ -108,7 +108,8 @@ function Dashboard({ session, role }) {
               costs={costs}
               addCostLine={addCostLine} removeCostLine={removeCostLine}
               updateCostNotes={updateCostNotes} setDoneFlag={setDoneFlag}
-              completeCost={completeCost} deleteOrder={deleteOrder}
+              completeCost={completeCost} manualArchive={manualArchive}
+              deleteOrder={deleteOrder}
             />
           )}
           {tab === 'completed' && (
@@ -127,7 +128,7 @@ function Dashboard({ session, role }) {
               deleteCustomer={deleteCustomer}
             />
           )}
-          {tab === 'finance' && (
+          {tab === 'finance' && role === 'owner' && (
             <FinanceTab completedOrders={completedOrders} />
           )}
         </ErrorBoundary>

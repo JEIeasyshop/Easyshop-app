@@ -8,7 +8,7 @@ import { formatCurrency } from '../lib/pricing'
 const DIR_LABEL  = { us_jkt: 'US → JKT', jkt_us: 'JKT → US' }
 const DEFAULT_FX = 15850
 
-export default function CostTab({ costs, addCostLine, removeCostLine, updateCostNotes, setDoneFlag, completeCost, deleteOrder }) {
+export default function CostTab({ costs, addCostLine, removeCostLine, updateCostNotes, setDoneFlag, completeCost, manualArchive, deleteOrder }) {
   const [selectedId, setSelectedId] = useState(null)
   const [search, setSearch]         = useState('')
   const [completing, setCompleting] = useState(false)
@@ -359,6 +359,14 @@ export default function CostTab({ costs, addCostLine, removeCostLine, updateCost
               }}>
                 <div className="flex-center gap-16">
                   <div className="flex-center gap-8">
+                    <div style={{width:20, height:20, borderRadius:'50%', border:`2px solid ${selected.tracking_done?'var(--green)':'var(--gray-300)'}`, background:selected.tracking_done?'var(--green)':'transparent', display:'flex', alignItems:'center', justifyContent:'center'}}>
+                      {selected.tracking_done && <Check size={11} color="white" strokeWidth={3} />}
+                    </div>
+                    <span className="text-sm" style={{color:selected.tracking_done?'var(--green)':'var(--gray-400)', fontWeight:selected.tracking_done?700:400}}>
+                      Shipment {selected.tracking_done ? 'done ✓' : 'pending'}
+                    </span>
+                  </div>
+                  <div className="flex-center gap-8">
                     <div style={{width:20, height:20, borderRadius:'50%', border:`2px solid ${invDone?'var(--green)':'var(--gray-300)'}`, background:invDone?'var(--green)':'transparent', display:'flex', alignItems:'center', justifyContent:'center'}}>
                       {invDone && <Check size={11} color="white" strokeWidth={3} />}
                     </div>
@@ -366,8 +374,11 @@ export default function CostTab({ costs, addCostLine, removeCostLine, updateCost
                       Invoice {invDone ? 'done ✓' : 'pending'}
                     </span>
                   </div>
-                  {invDone && costDone && (
-                    <span className="badge badge-green" style={{fontWeight:700}}>🎉 Will auto-archive</span>
+                  {selected.tracking_done && invDone && costDone && (
+                    <button className="btn btn-green btn-sm"
+                      onClick={async () => { if (manualArchive) await manualArchive(selected.id) }}>
+                      <CheckCircle size={13} /> Archive Now
+                    </button>
                   )}
                 </div>
 
