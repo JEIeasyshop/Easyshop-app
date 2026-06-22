@@ -215,8 +215,8 @@ export function useAppData() {
     const invoiceRow  = invoices.find(i => i.order_id === orderId)
     if (!order) throw new Error('Order not found')
 
-    // Update the existing cost row with the invoice + tracking snapshots
-    const { error: ue } = await supabase.from('costs')
+    // Update the existing cost row with invoice snapshot + mark invoice_done
+    const { data: costRec, error: ue } = await supabase.from('costs')
       .update({
         order_snapshot:    order,
         tracking_snapshot: trackingRow || null,
@@ -224,9 +224,12 @@ export function useAppData() {
         total_revenue:     invoiceRow?.total || order.computed_total || 0,
         currency:          invoiceRow?.currency || order.computed_currency || order.rate_currency || 'USD',
         usd_rate:          invoiceRow?.usd_rate || null,
+        invoice_done:      true,
         updated_at:        new Date().toISOString(),
       })
       .eq('original_order_id', orderId)
+      .select()
+      .single()
     if (ue) throw ue
 
     // Remove from active tables
@@ -234,6 +237,12 @@ export function useAppData() {
     await supabase.from('tracking_status').delete().eq('order_id', orderId)
     const { error: de } = await supabase.from('orders').delete().eq('id', orderId)
     if (de) throw de
+
+    // Auto-archive if cost_done was already checked
+    if (costRec?.cost_done) {
+      await _archiveCost(costRec.id, { ...costRec, invoice_done: true })
+      return
+    }
 
     await reload()
   }, [orders, tracking, invoices, reload])
@@ -281,25 +290,51 @@ export function useAppData() {
     setCosts(prev => prev.map(c => c.id === costId ? { ...c, ...updates } : c))
   }, [])
 
-  // Move from costs → completed_orders (final step)
-  const completeCost = useCallback(async (costId) => {
+  // Toggle invoice_done or cost_done; auto-archive when both true
+  const setDoneFlag = useCallback(async (costId, flag, value) => {
     const rec = costs.find(c => c.id === costId)
     if (!rec) throw new Error('Cost record not found')
 
+    const updates = { [flag]: value, updated_at: new Date().toISOString() }
+    const { error } = await supabase.from('costs').update(updates).eq('id', costId)
+    if (error) throw error
+
+    const updatedRec = { ...rec, ...updates }
+    setCosts(prev => prev.map(c => c.id === costId ? updatedRec : c))
+
+    // Auto-archive when both flags are true
+    if (updatedRec.invoice_done && updatedRec.cost_done) {
+      await _archiveCost(costId, updatedRec)
+    }
+  }, [costs])
+
+  // Internal: move cost record → completed_orders
+  const _archiveCost = useCallback(async (costId, rec) => {
     const { error: ie } = await supabase.from('completed_orders').insert({
       original_order_id: rec.original_order_id,
       order_snapshot:    rec.order_snapshot,
       tracking_snapshot: rec.tracking_snapshot,
       invoice_snapshot:  rec.invoice_snapshot,
-      cost_snapshot:     { cost_lines: rec.cost_lines, total_cost: rec.total_cost, total_revenue: rec.total_revenue, currency: rec.currency, usd_rate: rec.usd_rate },
+      cost_snapshot: {
+        cost_lines:    rec.cost_lines,
+        total_cost:    rec.total_cost,
+        total_revenue: rec.total_revenue,
+        currency:      rec.currency,
+        usd_rate:      rec.usd_rate,
+      },
     })
     if (ie) throw ie
-
     const { error: de } = await supabase.from('costs').delete().eq('id', costId)
     if (de) throw de
-
     await reload()
-  }, [costs, reload])
+  }, [reload])
+
+  // Move from costs → completed_orders (manual, used if both already checked)
+  const completeCost = useCallback(async (costId) => {
+    const rec = costs.find(c => c.id === costId)
+    if (!rec) throw new Error('Cost record not found')
+    await _archiveCost(costId, rec)
+  }, [costs, _archiveCost])
 
   // Revert completed → back to active (JEI pattern: sets completed=false)
   // For our snapshot model: re-insert order/tracking/invoice from snapshot
@@ -382,7 +417,7 @@ export function useAppData() {
     // Complete invoice → costs
     completeOrder,
     // Costs
-    addCostLine, removeCostLine, updateCostNotes, completeCost,
+    addCostLine, removeCostLine, updateCostNotes, setDoneFlag, completeCost,
     // Completed archive
     revertCompleted, deleteCompleted, cleanupExpired,
     // Customers

@@ -916,3 +916,29 @@ hr { border: none; border-top: 1px solid var(--gray-100); margin: 16px 0; }
 
 /* ── Customer form inline ────────────────────────────────── */
 .customer-form-inline { padding: 0; }
+
+/* ── Invoice paid indicators ─────────────────────────────── */
+.inv-row-paid {
+  background: var(--green-bg) !important;
+  border-left: 3px solid var(--green) !important;
+}
+.inv-row-paid:hover { background: #E6FFF0 !important; }
+
+.inv-paid-check {
+  width: 20px; height: 20px; border-radius: 50%;
+  background: var(--green); color: var(--white);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+
+.inv-paid-stamp {
+  display: inline-flex; align-items: center;
+  margin-top: 6px; padding: 4px 10px;
+  background: var(--green-bg);
+  border: 1.5px solid var(--green);
+  border-radius: var(--r-md);
+  color: var(--green);
+  font-family: var(--font-brand);
+  font-size: 12px; font-weight: 800;
+  letter-spacing: 0.06em;
+}

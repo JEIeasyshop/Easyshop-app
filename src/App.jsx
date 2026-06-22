@@ -33,7 +33,7 @@ function Dashboard({ session, role }) {
     updateTracking, advanceStage,
     upsertInvoice, addInvoiceCost, removeInvoiceCost, lockInvoiceTotal,
     completeOrder,
-    addCostLine, removeCostLine, updateCostNotes, completeCost,
+    addCostLine, removeCostLine, updateCostNotes, setDoneFlag, completeCost,
     revertCompleted, deleteCompleted, cleanupExpired,
     addCustomer, updateCustomer, deleteCustomer,
   } = useAppData()
@@ -95,18 +95,17 @@ function Dashboard({ session, role }) {
           )}
           {tab === 'invoices' && (
             <InvoiceTab
-              orders={orders} tracking={tracking} invoices={invoices}
+              orders={orders} tracking={tracking} invoices={invoices} costs={costs}
               addInvoiceCost={addInvoiceCost} removeInvoiceCost={removeInvoiceCost}
-              lockInvoiceTotal={lockInvoiceTotal}
-              completeOrder={completeOrder}
+              lockInvoiceTotal={lockInvoiceTotal} completeOrder={completeOrder}
+              updateTracking={updateTracking} setDoneFlag={setDoneFlag}
             />
           )}
           {tab === 'cost' && (
             <CostTab
               costs={costs}
-              addCostLine={addCostLine}
-              removeCostLine={removeCostLine}
-              updateCostNotes={updateCostNotes}
+              addCostLine={addCostLine} removeCostLine={removeCostLine}
+              updateCostNotes={updateCostNotes} setDoneFlag={setDoneFlag}
               completeCost={completeCost}
             />
           )}
