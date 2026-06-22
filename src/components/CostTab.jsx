@@ -115,8 +115,6 @@ export default function CostTab({ costs, addCostLine, removeCostLine, updateCost
             {v} <span className="stage-filter-count">{count}</span>
           </button>
         ))}
-
-        ))}
       </div>
 
       {costs.length === 0 ? (

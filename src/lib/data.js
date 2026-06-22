@@ -214,9 +214,26 @@ export function useAppData() {
       { onConflict: 'order_id' }
     ).select().single()
     if (error) throw error
+
+    // Sync invoice_snapshot on the matching cost row so Cost tab always sees latest invoice data
+    const merged = { ...invoices.find(i => i.order_id === orderId), ...invoiceData, ...data }
+    await supabase.from('costs')
+      .update({
+        invoice_snapshot: merged,
+        total_revenue:    merged.total || 0,
+        updated_at:       new Date().toISOString(),
+      })
+      .eq('original_order_id', orderId)
+
     patchInvoice(orderId, invoiceData)
+    // Also update cost state so UI reflects new invoice_snapshot immediately
+    setCosts(prev => prev.map(c =>
+      c.original_order_id === orderId
+        ? { ...c, invoice_snapshot: merged, total_revenue: merged.total || 0 }
+        : c
+    ))
     return data
-  }, [patchInvoice])
+  }, [invoices, patchInvoice])
 
   // Add a cost line to an invoice (optimistic, no full reload)
   const addInvoiceCost = useCallback(async (orderId, description, amount, currency = 'USD') => {
