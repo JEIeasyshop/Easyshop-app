@@ -111,6 +111,17 @@ export function useAppData() {
     })
     if (ie) throw ie
 
+    // Auto-create empty cost row so Cost tab is ready from day 1
+    const { error: ce } = await supabase.from('costs').insert({
+      original_order_id: data.id,
+      order_snapshot:    data,
+      cost_lines:        [],
+      total_revenue:     data.computed_total || 0,
+      total_cost:        0,
+      currency:          data.computed_currency || data.rate_currency || 'USD',
+    })
+    if (ce) throw ce
+
     await reload()
     return data
   }, [reload])
@@ -197,27 +208,28 @@ export function useAppData() {
     })
   }, [invoices, upsertInvoice])
 
-  // ── COMPLETE ORDER → moves to COSTS (not completed_orders) ──
+  // ── COMPLETE INVOICE → updates cost row, removes from active tables ──
   const completeOrder = useCallback(async (orderId) => {
     const order       = orders.find(o => o.id === orderId)
     const trackingRow = tracking.find(t => t.order_id === orderId)
     const invoiceRow  = invoices.find(i => i.order_id === orderId)
     if (!order) throw new Error('Order not found')
 
-    // Insert into costs table (not completed_orders yet)
-    const { error: ce } = await supabase.from('costs').insert({
-      original_order_id: orderId,
-      order_snapshot:    order,
-      tracking_snapshot: trackingRow || null,
-      invoice_snapshot:  invoiceRow  || null,
-      cost_lines:        [],
-      total_revenue:     invoiceRow?.total || order.computed_total || 0,
-      total_cost:        0,
-      currency:          invoiceRow?.currency || order.computed_currency || order.rate_currency || 'USD',
-      usd_rate:          invoiceRow?.usd_rate || null,
-    })
-    if (ce) throw ce
+    // Update the existing cost row with the invoice + tracking snapshots
+    const { error: ue } = await supabase.from('costs')
+      .update({
+        order_snapshot:    order,
+        tracking_snapshot: trackingRow || null,
+        invoice_snapshot:  invoiceRow  || null,
+        total_revenue:     invoiceRow?.total || order.computed_total || 0,
+        currency:          invoiceRow?.currency || order.computed_currency || order.rate_currency || 'USD',
+        usd_rate:          invoiceRow?.usd_rate || null,
+        updated_at:        new Date().toISOString(),
+      })
+      .eq('original_order_id', orderId)
+    if (ue) throw ue
 
+    // Remove from active tables
     await supabase.from('invoices').delete().eq('order_id', orderId)
     await supabase.from('tracking_status').delete().eq('order_id', orderId)
     const { error: de } = await supabase.from('orders').delete().eq('id', orderId)
