@@ -89,7 +89,7 @@ function Dashboard({ session, role }) {
           )}
           {tab === 'tracking' && (
             <TrackingTab
-              orders={orders} tracking={tracking} carriers={carriers}
+              orders={orders} tracking={tracking} carriers={carriers} costs={costs}
               updateTracking={updateTracking} advanceStage={advanceStage}
             />
           )}

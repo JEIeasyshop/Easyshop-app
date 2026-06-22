@@ -68,7 +68,7 @@ function TrackingLeg({ label, carrier, number, carriers, onSave }) {
   )
 }
 
-export default function TrackingTab({ orders, tracking, carriers, updateTracking, advanceStage }) {
+export default function TrackingTab({ orders, tracking, carriers, costs = [], updateTracking, advanceStage }) {
   const [stageFilter, setStageFilter] = useState('All')
   const [search, setSearch]           = useState('')
   const [advancing, setAdvancing]     = useState(null)
@@ -223,8 +223,18 @@ export default function TrackingTab({ orders, tracking, carriers, updateTracking
                   <div className="flex-center gap-12">
                     <span className="ship-id">ORD-{order.id?.substring(0,6).toUpperCase()}</span>
                     {carrier && <span className="text-sm text-muted">{carrier.name}</span>}
-                    {order.vol_divisor && <span className="text-sm text-muted">+{order.vol_divisor}</span>}
                     <span className={`pay-badge pay-${pay.toLowerCase()}`}>{pay}</span>
+                    {/* 3 status bubbles: tracking / invoice / cost */}
+                    {(() => {
+                      const costRec = costs.find(c => c.original_order_id === order.id)
+                      return (
+                        <div className="flex-center gap-4" title="Tracking · Invoice · Cost">
+                          <div style={{width:8, height:8, borderRadius:'50%', background: costRec?.tracking_done ? 'var(--green)' : 'var(--gray-200)'}} />
+                          <div style={{width:8, height:8, borderRadius:'50%', background: costRec?.invoice_done ? 'var(--green)' : 'var(--gray-200)'}} />
+                          <div style={{width:8, height:8, borderRadius:'50%', background: costRec?.cost_done ? 'var(--green)' : 'var(--gray-200)'}} />
+                        </div>
+                      )
+                    })()}
                   </div>
                   <div className="flex-center gap-12">
                     <span className="text-sm text-muted">1 order: {order.customer_name}</span>

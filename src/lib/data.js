@@ -152,7 +152,48 @@ export function useAppData() {
       { stage: newStage, timestamp: new Date().toISOString(), note },
     ]
     await updateTracking(orderId, { current_stage: newStage, stage_history: newHistory })
-  }, [tracking, updateTracking])
+
+    // Auto-set tracking_done when final stage is reached
+    const order = orders.find(o => o.id === orderId)
+    if (order) {
+      const seq     = getStageSequence(order.service_type)
+      const isFinal = newStage === seq[seq.length - 1]
+      const costRec = costs.find(c => c.original_order_id === orderId)
+      if (isFinal && costRec && !costRec.tracking_done) {
+        // Direct update (avoids circular dep with setDoneFlag)
+        await supabase.from('costs')
+          .update({ tracking_done: true, updated_at: new Date().toISOString() })
+          .eq('id', costRec.id)
+        setCosts(prev => prev.map(c => c.id === costRec.id ? { ...c, tracking_done: true } : c))
+        // Check if all 3 now done — trigger full archive via reload to get fresh state
+        const updated = { ...costRec, tracking_done: true }
+        if (updated.invoice_done && updated.cost_done) {
+          // Re-fetch and archive
+          const [fo, ft, fi, fc] = await Promise.all([
+            supabase.from('orders').select('*').eq('id', orderId).single(),
+            supabase.from('tracking_status').select('*').eq('order_id', orderId).single(),
+            supabase.from('invoices').select('*').eq('order_id', orderId).single(),
+            supabase.from('costs').select('*').eq('id', costRec.id).single(),
+          ])
+          const cost = fc.data || updated
+          const invoice = fi.data
+          await supabase.from('completed_orders').insert({
+            original_order_id: orderId,
+            order_snapshot:    fo.data || order,
+            tracking_snapshot: ft.data || null,
+            invoice_snapshot:  invoice || null,
+            cost_snapshot: { cost_lines: cost.cost_lines||[], total_cost: cost.total_cost||0, total_revenue: cost.total_revenue||invoice?.total||0, currency: cost.currency||'USD', usd_rate: cost.usd_rate||null },
+          })
+          await supabase.from('costs').delete().eq('id', costRec.id)
+          await supabase.from('invoices').delete().eq('order_id', orderId)
+          await supabase.from('tracking_status').delete().eq('order_id', orderId)
+          await supabase.from('orders').delete().eq('id', orderId)
+          await reload()
+          return
+        }
+      }
+    }
+  }, [tracking, updateTracking, orders, costs, reload])
 
   // ── INVOICES ─────────────────────────────────────────────
   const upsertInvoice = useCallback(async (orderId, invoiceData) => {
@@ -290,11 +331,13 @@ export function useAppData() {
     setCosts(prev => prev.map(c => c.id === costId ? { ...c, ...updates } : c))
   }, [])
 
-  // Toggle invoice_done or cost_done; auto-archive when both true
+  // Toggle tracking_done / invoice_done / cost_done.
+  // Fetches fresh snapshots from DB before archiving so data is never stale.
   const setDoneFlag = useCallback(async (costId, flag, value) => {
     const rec = costs.find(c => c.id === costId)
     if (!rec) throw new Error('Cost record not found')
 
+    // 1. Write the flag update
     const updates = { [flag]: value, updated_at: new Date().toISOString() }
     const { error } = await supabase.from('costs').update(updates).eq('id', costId)
     if (error) throw error
@@ -302,34 +345,82 @@ export function useAppData() {
     const updatedRec = { ...rec, ...updates }
     setCosts(prev => prev.map(c => c.id === costId ? updatedRec : c))
 
-    // Auto-archive when both flags are true
-    if (updatedRec.invoice_done && updatedRec.cost_done) {
-      await _archiveCost(costId, updatedRec)
-    }
-  }, [costs])
+    // 2. Check if ALL 3 criteria are now met → archive immediately
+    if (updatedRec.tracking_done && updatedRec.invoice_done && updatedRec.cost_done) {
+      // Fetch fresh snapshots so archived data is never stale
+      const orderId = updatedRec.original_order_id
+      const [fo, ft, fi, fc] = await Promise.all([
+        supabase.from('orders').select('*').eq('id', orderId).single(),
+        supabase.from('tracking_status').select('*').eq('order_id', orderId).single(),
+        supabase.from('invoices').select('*').eq('order_id', orderId).single(),
+        supabase.from('costs').select('*').eq('id', costId).single(),
+      ])
+      const order   = fo.data || updatedRec.order_snapshot
+      const track   = ft.data || updatedRec.tracking_snapshot
+      const invoice = fi.data || updatedRec.invoice_snapshot
+      const cost    = fc.data || updatedRec
 
-  // Internal: move cost record → completed_orders
+      const { error: ie } = await supabase.from('completed_orders').insert({
+        original_order_id: orderId,
+        order_snapshot:    order,
+        tracking_snapshot: track   || null,
+        invoice_snapshot:  invoice || null,
+        cost_snapshot: {
+          cost_lines:    cost.cost_lines    || [],
+          total_cost:    cost.total_cost    || 0,
+          total_revenue: cost.total_revenue || invoice?.total || 0,
+          currency:      cost.currency      || invoice?.currency || 'USD',
+          usd_rate:      cost.usd_rate      || invoice?.usd_rate || null,
+        },
+      })
+      if (ie) throw ie
+
+      // Clean up active rows
+      await supabase.from('costs').delete().eq('id', costId)
+      await supabase.from('invoices').delete().eq('order_id', orderId)
+      await supabase.from('tracking_status').delete().eq('order_id', orderId)
+      await supabase.from('orders').delete().eq('id', orderId)
+
+      await reload()
+    }
+  }, [costs, reload])
+
+  // Manual fallback archive (called from completeCost button)
   const _archiveCost = useCallback(async (costId, rec) => {
+    const orderId = rec.original_order_id
+    const [fo, ft, fi, fc] = await Promise.all([
+      supabase.from('orders').select('*').eq('id', orderId).single(),
+      supabase.from('tracking_status').select('*').eq('order_id', orderId).single(),
+      supabase.from('invoices').select('*').eq('order_id', orderId).single(),
+      supabase.from('costs').select('*').eq('id', costId).single(),
+    ])
+    const order   = fo.data || rec.order_snapshot
+    const track   = ft.data || rec.tracking_snapshot
+    const invoice = fi.data || rec.invoice_snapshot
+    const cost    = fc.data || rec
+
     const { error: ie } = await supabase.from('completed_orders').insert({
-      original_order_id: rec.original_order_id,
-      order_snapshot:    rec.order_snapshot,
-      tracking_snapshot: rec.tracking_snapshot,
-      invoice_snapshot:  rec.invoice_snapshot,
+      original_order_id: orderId,
+      order_snapshot:    order,
+      tracking_snapshot: track   || null,
+      invoice_snapshot:  invoice || null,
       cost_snapshot: {
-        cost_lines:    rec.cost_lines,
-        total_cost:    rec.total_cost,
-        total_revenue: rec.total_revenue,
-        currency:      rec.currency,
-        usd_rate:      rec.usd_rate,
+        cost_lines:    cost.cost_lines    || [],
+        total_cost:    cost.total_cost    || 0,
+        total_revenue: cost.total_revenue || invoice?.total || 0,
+        currency:      cost.currency      || invoice?.currency || 'USD',
+        usd_rate:      cost.usd_rate      || invoice?.usd_rate || null,
       },
     })
     if (ie) throw ie
-    const { error: de } = await supabase.from('costs').delete().eq('id', costId)
-    if (de) throw de
+
+    await supabase.from('costs').delete().eq('id', costId)
+    await supabase.from('invoices').delete().eq('order_id', orderId)
+    await supabase.from('tracking_status').delete().eq('order_id', orderId)
+    await supabase.from('orders').delete().eq('id', orderId)
     await reload()
   }, [reload])
 
-  // Move from costs → completed_orders (manual, used if both already checked)
   const completeCost = useCallback(async (costId) => {
     const rec = costs.find(c => c.id === costId)
     if (!rec) throw new Error('Cost record not found')
