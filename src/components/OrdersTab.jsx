@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react'
 import { Plus, Package, Download, Search, Pencil, Trash2 } from 'lucide-react'
 import CompleteButton from './CompleteButton'
+import OrderForm from './OrderForm'
 import { getStageLabel, getStageSequence, isFinalStage, STAGE_LABELS } from '../lib/data'
 import { formatCurrency } from '../lib/pricing'
 
