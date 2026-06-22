@@ -237,6 +237,11 @@ export default function InvoiceTab({
                   </span>
                 </div>
                 <div className="flex-center gap-8" style={{flexShrink:0, marginLeft:12}}>
+                  {/* Two status dots: invoice + cost */}
+                  <div className="flex-center gap-4" title={`Invoice: ${invDone ? 'done' : 'pending'} · Cost: ${costRec?.cost_done ? 'done' : 'pending'}`}>
+                    <div style={{width:8, height:8, borderRadius:'50%', background: invDone ? 'var(--green)' : 'var(--gray-200)', transition:'background 0.2s'}} />
+                    <div style={{width:8, height:8, borderRadius:'50%', background: costRec?.cost_done ? 'var(--green)' : 'var(--gray-200)', transition:'background 0.2s'}} />
+                  </div>
                   {stageBadge(order, tRow)}
                   {/* Payment segment inline */}
                   <div className="pay-seg" onClick={e => e.stopPropagation()}>

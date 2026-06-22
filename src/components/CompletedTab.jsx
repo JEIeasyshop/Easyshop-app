@@ -198,7 +198,7 @@ export default function CompletedTab({ completedOrders, revertCompleted, deleteC
                               </div>
                             )}
 
-                            {/* Actions — JEI pattern: revert + delete + PDF */}
+                            {/* Actions */}
                             <div className="flex-center gap-8">
                               <button className="btn btn-outline btn-sm"
                                 onClick={() => generateInvoicePDF(o, inv, inv.additional_costs || [])}>
@@ -207,7 +207,7 @@ export default function CompletedTab({ completedOrders, revertCompleted, deleteC
                               <button className="btn btn-outline btn-sm"
                                 style={{color:'var(--amber)', borderColor:'var(--amber)'}}
                                 onClick={e => { e.stopPropagation(); setConfirmRev(c.id) }}>
-                                <RotateCcw size={13} /> Revert to Invoice
+                                <RotateCcw size={13} /> Revert to Invoice + Cost
                               </button>
                               <button className="btn btn-danger btn-sm"
                                 onClick={e => { e.stopPropagation(); setConfirmDel(c.id) }}>
@@ -247,8 +247,10 @@ export default function CompletedTab({ completedOrders, revertCompleted, deleteC
       {confirmRev && (
         <div className="overlay">
           <div className="confirm-modal">
-            <h3>Revert to Invoice?</h3>
-            <p>This will move the order back to Orders, Tracking, and Invoices as an active order.</p>
+            <h3>Revert to Invoice + Cost?</h3>
+            <p>
+              This will move the order back to the <strong>Invoice tab</strong> and restore its cost sheet in the <strong>Cost tab</strong> — with both checkmarks reset so you can re-edit. The cost lines you previously entered will be preserved.
+            </p>
             <div className="confirm-actions">
               <button className="btn btn-outline" onClick={() => setConfirmRev(null)}>Cancel</button>
               <button className="btn btn-gold" disabled={actionBusy}

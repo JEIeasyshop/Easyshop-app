@@ -336,30 +336,48 @@ export function useAppData() {
     await _archiveCost(costId, rec)
   }, [costs, _archiveCost])
 
-  // Revert completed → back to active (JEI pattern: sets completed=false)
-  // For our snapshot model: re-insert order/tracking/invoice from snapshot
+  // Revert completed → back to Invoice + Cost tabs
   const revertCompleted = useCallback(async (completedId) => {
     const rec = completedOrders.find(c => c.id === completedId)
     if (!rec) throw new Error('Completed record not found')
 
-    const { order_snapshot: o, tracking_snapshot: t, invoice_snapshot: inv } = rec
+    const { order_snapshot: o, tracking_snapshot: t, invoice_snapshot: inv, cost_snapshot: cost } = rec
 
-    // Re-insert order (strip id so DB generates new or keep original)
+    // Re-insert order
     const { error: oe } = await supabase.from('orders').insert({
       ...o, updated_at: new Date().toISOString()
     })
     if (oe) throw oe
 
+    // Re-insert tracking
     if (t) {
       await supabase.from('tracking_status').insert({
         ...t, updated_at: new Date().toISOString()
       })
     }
+
+    // Re-insert invoice
     if (inv) {
       await supabase.from('invoices').insert({
         ...inv, updated_at: new Date().toISOString()
       })
     }
+
+    // Restore cost record (with invoice_done + cost_done reset to false for editing)
+    const { error: ce } = await supabase.from('costs').insert({
+      original_order_id: rec.original_order_id,
+      order_snapshot:    o,
+      tracking_snapshot: t || null,
+      invoice_snapshot:  inv || null,
+      cost_lines:        cost?.cost_lines    || [],
+      total_revenue:     cost?.total_revenue || inv?.total || 0,
+      total_cost:        cost?.total_cost    || 0,
+      currency:          cost?.currency      || o?.rate_currency || 'USD',
+      usd_rate:          cost?.usd_rate      || null,
+      invoice_done:      false,
+      cost_done:         false,
+    })
+    if (ce) throw ce
 
     // Delete from completed
     await supabase.from('completed_orders').delete().eq('id', completedId)
