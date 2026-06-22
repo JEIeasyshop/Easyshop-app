@@ -82,7 +82,7 @@ function Dashboard({ session, role }) {
         <ErrorBoundary>
           {tab === 'orders' && (
             <OrdersTab
-              orders={orders} tracking={tracking}
+              orders={orders} tracking={tracking} costs={costs}
               addOrder={addOrder} updateOrder={updateOrder} deleteOrder={deleteOrder}
               customers={customers} addCustomer={addCustomer}
             />

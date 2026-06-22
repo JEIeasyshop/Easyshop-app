@@ -25,15 +25,26 @@ export default function CostTab({ costs, addCostLine, removeCostLine, updateCost
   const [savingRate, setSavingRate] = useState(false)
   const [togglingCost, setTogglingCost] = useState(false)
 
-  const filtered = useMemo(() => {
+  // Group by gross (revenue>0) vs net (profit calculation)
+  const COST_GROUPS = ['With Revenue', 'No Revenue Yet']
+  const [groupFilter, setGroupFilter] = useState('All') // 'All' | 'With Revenue' | 'No Revenue Yet'
+
+  const grouped = useMemo(() => {
     const q = search.toLowerCase().trim()
-    if (!q) return costs
-    return costs.filter(c => {
+    const filteredCosts = costs.filter(c => {
       const o = c.order_snapshot || {}
-      return (o.customer_name || '').toLowerCase().includes(q) ||
-             (o.goods_description || '').toLowerCase().includes(q)
+      if (q && !(o.customer_name||'').toLowerCase().includes(q) && !(o.goods_description||'').toLowerCase().includes(q)) return false
+      if (groupFilter === 'With Revenue')   return (c.total_revenue || 0) > 0
+      if (groupFilter === 'No Revenue Yet') return !c.total_revenue || c.total_revenue === 0
+      return true
     })
-  }, [costs, search])
+    const withRev    = filteredCosts.filter(c => (c.total_revenue || 0) > 0)
+    const withoutRev = filteredCosts.filter(c => !c.total_revenue || c.total_revenue === 0)
+    const result = []
+    if (withRev.length > 0)    result.push(['With Revenue', withRev])
+    if (withoutRev.length > 0) result.push(['No Revenue Yet', withoutRev])
+    return result
+  }, [costs, search, groupFilter])
 
   const selected = costs.find(c => c.id === selectedId)
 
@@ -96,7 +107,19 @@ export default function CostTab({ costs, addCostLine, removeCostLine, updateCost
         </div>
       </div>
 
-      {filtered.length === 0 ? (
+      {/* Group filter chips */}
+      <div className="stage-filter-row" style={{marginBottom:14}}>
+        {[['All', costs.length], ['With Revenue', costs.filter(c=>(c.total_revenue||0)>0).length], ['No Revenue Yet', costs.filter(c=>!c.total_revenue||c.total_revenue===0).length]].map(([v, count]) => (
+          <button key={v} className={`stage-filter-chip ${groupFilter === v ? 'active' : ''}`}
+            onClick={() => setGroupFilter(v)}>
+            {v} <span className="stage-filter-count">{count}</span>
+          </button>
+        ))}
+
+        ))}
+      </div>
+
+      {costs.length === 0 ? (
         <div className="card mt-16">
           <div className="empty-state">
             <div className="empty-icon"><Receipt size={26} /></div>
@@ -105,16 +128,32 @@ export default function CostTab({ costs, addCostLine, removeCostLine, updateCost
           </div>
         </div>
       ) : (<>
-        {/* Cost list */}
+        {/* Cost list — grouped */}
         <div className="inv-list mt-16">
-          {filtered.map(rec => {
+          {grouped.length === 0 ? (
+            <div style={{padding:'20px 18px', color:'var(--gray-400)', fontSize:13}}>No matching records.</div>
+          ) : grouped.map(([groupLabel, groupRecs]) => (
+            <div key={groupLabel}>
+              {/* Group header */}
+              <div style={{
+                padding:'7px 18px', background:'var(--gray-50)',
+                borderBottom:'1px solid var(--gray-100)', borderTop:'1px solid var(--gray-100)',
+                fontSize:11, fontWeight:700, color:'var(--gray-400)',
+                textTransform:'uppercase', letterSpacing:'0.08em',
+                display:'flex', justifyContent:'space-between',
+              }}>
+                <span>{groupLabel === 'With Revenue' ? '💰 Gross' : '⏳ No Revenue Yet'}</span>
+                <span style={{fontWeight:500}}>{groupRecs.length}</span>
+              </div>
+              {groupRecs.map(rec => {
             const o         = rec.order_snapshot || {}
             const revIDR    = getRevIDR(rec)
             const costIDR   = getCostIDR(rec)
             const profitIDR = revIDR - costIDR
             const isSel     = selectedId === rec.id
-            const invDone   = rec.invoice_done || false
-            const costDone  = rec.cost_done    || false
+            const invDone   = rec.invoice_done  || false
+            const costDone  = rec.cost_done     || false
+            const trkDone   = rec.tracking_done || false
 
             return (
               <div key={rec.id}
@@ -126,13 +165,12 @@ export default function CostTab({ costs, addCostLine, removeCostLine, updateCost
                 {/* Left — grid layout */}
                 <div style={{display:'grid', gridTemplateColumns:'auto auto 1fr', alignItems:'center', gap:10, overflow:'hidden', minWidth:0}}>
                   {/* Cost done circle */}
-                  <div onClick={async e => { e.stopPropagation(); const toggled = !costDone; await setDoneFlag(rec.id, 'cost_done', toggled) }}
+                  <div onClick={async e => { e.stopPropagation(); await setDoneFlag(rec.id, 'cost_done', !costDone) }}
                     style={{
                       width:20, height:20, borderRadius:'50%', flexShrink:0, cursor:'pointer',
                       border:`2px solid ${costDone ? 'var(--green)' : 'var(--gray-200)'}`,
                       background: costDone ? 'var(--green)' : 'transparent',
-                      display:'flex', alignItems:'center', justifyContent:'center',
-                      transition:'all 0.15s',
+                      display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.15s',
                     }}>
                     {costDone && <Check size={11} color="white" strokeWidth={3} />}
                   </div>
@@ -148,12 +186,8 @@ export default function CostTab({ costs, addCostLine, removeCostLine, updateCost
                   </span>
                 </div>
 
-                {/* Right — financials + status dots */}
+                {/* Right — financials + 3 status dots far right + delete */}
                 <div className="flex-center gap-12" style={{flexShrink:0, marginLeft:12}}>
-                  <div className="flex-center gap-6">
-                    <div style={{width:8, height:8, borderRadius:'50%', background: invDone ? 'var(--green)' : 'var(--gray-200)'}} title="Invoice done" />
-                    <div style={{width:8, height:8, borderRadius:'50%', background: costDone ? 'var(--green)' : 'var(--gray-200)'}} title="Cost done" />
-                  </div>
                   <div style={{textAlign:'right'}}>
                     <div className="text-sm text-muted">Revenue</div>
                     <div style={{fontWeight:700, color:'var(--navy)', whiteSpace:'nowrap'}}>Rp {Math.round(revIDR).toLocaleString('id-ID')}</div>
@@ -168,6 +202,12 @@ export default function CostTab({ costs, addCostLine, removeCostLine, updateCost
                       Rp {Math.round(profitIDR).toLocaleString('id-ID')}
                     </div>
                   </div>
+                  {/* 3 status dots — tracking · invoice · cost — far right, consistent */}
+                  <div className="flex-center gap-4" title="Shipment · Invoice · Cost">
+                    <div style={{width:8, height:8, borderRadius:'50%', background: trkDone ? 'var(--green)' : 'var(--gray-200)'}} />
+                    <div style={{width:8, height:8, borderRadius:'50%', background: invDone ? 'var(--green)' : 'var(--gray-200)'}} />
+                    <div style={{width:8, height:8, borderRadius:'50%', background: costDone ? 'var(--green)' : 'var(--gray-200)'}} />
+                  </div>
                   <button className="btn-ghost btn-sm" title="Delete order" style={{color:'var(--red)'}}
                     onClick={e => { e.stopPropagation(); setConfirmDel(rec.original_order_id) }}>
                     <Trash2 size={14} />
@@ -176,6 +216,8 @@ export default function CostTab({ costs, addCostLine, removeCostLine, updateCost
               </div>
             )
           })}
+            </div>
+          ))}
         </div>
 
         {/* Expanded cost panel */}

@@ -60,18 +60,16 @@ export default function InvoiceTab({
   const getCost = (oid) => costs.find(c => c.original_order_id === oid)
   const getPayment = (oid) => getTrow(oid)?.payment || 'Unpaid'
 
-  // Filter options based on payment state
+  // Filter options
   const filterOptions = useMemo(() => {
     const counts = { all: orders.length, Unpaid: 0, Invoiced: 0, Paid: 0 }
-    orders.forEach(o => {
-      const p = getPayment(o.id)
-      counts[p] = (counts[p] || 0) + 1
-    })
+    orders.forEach(o => { const p = getPayment(o.id); counts[p] = (counts[p] || 0) + 1 })
     return counts
   }, [orders, tracking])
 
-  const filtered = useMemo(() => {
-    return orders.filter(o => {
+  // Grouped by payment status (default: Invoiced first, then Paid)
+  const grouped = useMemo(() => {
+    const filtered_orders = orders.filter(o => {
       if (filterStatus !== 'all' && getPayment(o.id) !== filterStatus) return false
       if (search.trim()) {
         const q = search.toLowerCase()
@@ -80,6 +78,15 @@ export default function InvoiceTab({
       }
       return true
     })
+    // Group by Unpaid / Invoiced / Paid
+    const groups = {}
+    filtered_orders.forEach(o => {
+      const p = getPayment(o.id)
+      if (!groups[p]) groups[p] = []
+      groups[p].push(o)
+    })
+    const ORDER = ['Unpaid', 'Invoiced', 'Paid']
+    return Object.entries(groups).sort(([a], [b]) => ORDER.indexOf(a) - ORDER.indexOf(b))
   }, [orders, tracking, filterStatus, search])
 
   const selected  = orders.find(o => o.id === selectedId)
@@ -196,9 +203,24 @@ export default function InvoiceTab({
           </div>
         </div>
       ) : (<>
-        {/* Invoice list */}
+        {/* Invoice list — grouped by payment status */}
         <div className="inv-list">
-          {filtered.map(order => {
+          {grouped.length === 0 ? (
+            <div style={{padding:'20px 18px', color:'var(--gray-400)', fontSize:13}}>No matching orders.</div>
+          ) : grouped.map(([groupLabel, groupOrders]) => (
+            <div key={groupLabel}>
+              {/* Group header */}
+              <div style={{
+                padding:'7px 18px', background:'var(--gray-50)',
+                borderBottom:'1px solid var(--gray-100)', borderTop: '1px solid var(--gray-100)',
+                fontSize:11, fontWeight:700, color:'var(--gray-400)',
+                textTransform:'uppercase', letterSpacing:'0.08em',
+                display:'flex', justifyContent:'space-between',
+              }}>
+                <span>{groupLabel === 'Paid' ? '✓ ' : groupLabel === 'Invoiced' ? '📋 ' : '⏳ '}{groupLabel}</span>
+                <span style={{fontWeight:500}}>{groupOrders.length}</span>
+              </div>
+              {groupOrders.map(order => {
             const inv     = getInv(order.id)
             const tRow    = getTrow(order.id)
             const costRec = getCost(order.id)
@@ -209,21 +231,22 @@ export default function InvoiceTab({
             const pay      = tRow?.payment || 'Unpaid'
             const isPaid   = pay === 'Paid'
             const isSel    = selectedId === order.id
-            const invDone  = costRec?.invoice_done || false
+            const invDone  = costRec?.invoice_done  || false
+            const trkDone  = costRec?.tracking_done || false
+            const cstDone  = costRec?.cost_done     || false
 
             return (
               <div key={order.id}
                 className={`inv-row ${isSel ? 'inv-row-active' : ''}`}
                 onClick={() => selectOrder(order.id)}>
+                {/* Left: checkmark + ORD + name/desc */}
                 <div style={{display:'grid', gridTemplateColumns:'auto auto 1fr', alignItems:'center', gap:10, overflow:'hidden', minWidth:0}}>
-                  {/* Invoice done checkmark */}
                   <div onClick={e => { e.stopPropagation(); handleMarkInvoiceDone(order.id, !invDone) }}
                     style={{
                       width:20, height:20, borderRadius:'50%', flexShrink:0, cursor:'pointer',
-                      border: `2px solid ${invDone ? 'var(--green)' : 'var(--gray-200)'}`,
+                      border:`2px solid ${invDone ? 'var(--green)' : 'var(--gray-200)'}`,
                       background: invDone ? 'var(--green)' : 'transparent',
-                      display:'flex', alignItems:'center', justifyContent:'center',
-                      transition:'all 0.15s',
+                      display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.15s',
                     }}>
                     {invDone && <Check size={11} color="white" strokeWidth={3} />}
                   </div>
@@ -238,27 +261,25 @@ export default function InvoiceTab({
                     </span>
                   </span>
                 </div>
+                {/* Right: payment seg + amount + 3 bubbles + delete */}
                 <div className="flex-center gap-8" style={{flexShrink:0, marginLeft:12}}>
-                  {/* Two status dots: invoice + cost */}
-                  <div className="flex-center gap-4" title={`Invoice: ${invDone ? 'done' : 'pending'} · Cost: ${costRec?.cost_done ? 'done' : 'pending'}`}>
-                    <div style={{width:8, height:8, borderRadius:'50%', background: invDone ? 'var(--green)' : 'var(--gray-200)', transition:'background 0.2s'}} />
-                    <div style={{width:8, height:8, borderRadius:'50%', background: costRec?.cost_done ? 'var(--green)' : 'var(--gray-200)', transition:'background 0.2s'}} />
-                  </div>
                   {stageBadge(order, tRow)}
-                  {/* Payment segment inline */}
                   <div className="pay-seg" onClick={e => e.stopPropagation()}>
                     {PAY_STATES.map(p => (
-                      <button key={p}
-                        className={`pay-seg-btn ${pay === p ? 'pay-seg-active' : ''}`}
+                      <button key={p} className={`pay-seg-btn ${pay === p ? 'pay-seg-active' : ''}`}
                         disabled={savingPay === order.id}
-                        onClick={() => handleSetPayment(order.id, p)}>
-                        {p}
-                      </button>
+                        onClick={() => handleSetPayment(order.id, p)}>{p}</button>
                     ))}
                   </div>
                   <span style={{fontWeight:700, fontSize:14, whiteSpace:'nowrap', color: isPaid ? 'var(--green)' : 'var(--text)'}}>
                     Rp {Math.round(totalIDR).toLocaleString('id-ID')}
                   </span>
+                  {/* 3 status dots — tracking · invoice · cost — far right */}
+                  <div className="flex-center gap-4" title="Shipment · Invoice · Cost">
+                    <div style={{width:8, height:8, borderRadius:'50%', background: trkDone ? 'var(--green)' : 'var(--gray-200)'}} />
+                    <div style={{width:8, height:8, borderRadius:'50%', background: invDone ? 'var(--green)' : 'var(--gray-200)'}} />
+                    <div style={{width:8, height:8, borderRadius:'50%', background: cstDone ? 'var(--green)' : 'var(--gray-200)'}} />
+                  </div>
                   <button className="btn-ghost btn-sm" title="Delete order" style={{color:'var(--red)', flexShrink:0}}
                     onClick={e => { e.stopPropagation(); setConfirmDel(order.id) }}>
                     <Trash2 size={14} />
@@ -267,6 +288,8 @@ export default function InvoiceTab({
               </div>
             )
           })}
+            </div>
+          ))}
         </div>
 
         {/* Expanded invoice doc */}
