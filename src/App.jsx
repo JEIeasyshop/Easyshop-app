@@ -29,7 +29,7 @@ function Dashboard({ session, role }) {
   const {
     orders, tracking, invoices, completedOrders, carriers, customers, costs,
     loading, error,
-    addOrder, updateOrder,
+    addOrder, updateOrder, deleteOrder,
     updateTracking, advanceStage,
     upsertInvoice, addInvoiceCost, removeInvoiceCost, lockInvoiceTotal,
     completeOrder,
@@ -83,7 +83,7 @@ function Dashboard({ session, role }) {
           {tab === 'orders' && (
             <OrdersTab
               orders={orders} tracking={tracking}
-              addOrder={addOrder} updateOrder={updateOrder}
+              addOrder={addOrder} updateOrder={updateOrder} deleteOrder={deleteOrder}
               customers={customers} addCustomer={addCustomer}
             />
           )}
@@ -91,6 +91,7 @@ function Dashboard({ session, role }) {
             <TrackingTab
               orders={orders} tracking={tracking} carriers={carriers} costs={costs}
               updateTracking={updateTracking} advanceStage={advanceStage}
+              deleteOrder={deleteOrder}
             />
           )}
           {tab === 'invoices' && (
@@ -99,6 +100,7 @@ function Dashboard({ session, role }) {
               addInvoiceCost={addInvoiceCost} removeInvoiceCost={removeInvoiceCost}
               lockInvoiceTotal={lockInvoiceTotal} completeOrder={completeOrder}
               updateTracking={updateTracking} setDoneFlag={setDoneFlag}
+              deleteOrder={deleteOrder}
             />
           )}
           {tab === 'cost' && (
@@ -106,7 +108,7 @@ function Dashboard({ session, role }) {
               costs={costs}
               addCostLine={addCostLine} removeCostLine={removeCostLine}
               updateCostNotes={updateCostNotes} setDoneFlag={setDoneFlag}
-              completeCost={completeCost}
+              completeCost={completeCost} deleteOrder={deleteOrder}
             />
           )}
           {tab === 'completed' && (

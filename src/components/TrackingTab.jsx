@@ -2,7 +2,7 @@
 // Design: matches JEI Shipments tab — KPI cards, stage filter chips,
 // per-card checkpoint timeline, payment segment, 3-leg tracking numbers
 import { useState, useMemo } from 'react'
-import { Truck, Check, ExternalLink, Plus, Search } from 'lucide-react'
+import { Truck, Check, ExternalLink, Plus, Search, Trash2 } from 'lucide-react'
 import { getStageLabel, getStageSequence, isFinalStage } from '../lib/data'
 
 // Stage filter options — All + each stage label
@@ -68,11 +68,12 @@ function TrackingLeg({ label, carrier, number, carriers, onSave }) {
   )
 }
 
-export default function TrackingTab({ orders, tracking, carriers, costs = [], updateTracking, advanceStage }) {
+export default function TrackingTab({ orders, tracking, carriers, costs = [], updateTracking, advanceStage, deleteOrder }) {
   const [stageFilter, setStageFilter] = useState('All')
   const [search, setSearch]           = useState('')
   const [advancing, setAdvancing]     = useState(null)
-  const [savingPay, setSavingPay]     = useState(null)
+  const [confirmDel, setConfirmDel]   = useState(null)
+  const [deleting, setDeleting]       = useState(false)
 
   const getT = (oid) => tracking.find(t => t.order_id === oid)
 
@@ -140,9 +141,13 @@ export default function TrackingTab({ orders, tracking, carriers, costs = [], up
   }
 
   const setPayment = async (orderId, payment) => {
-    setSavingPay(orderId)
-    try { await updateTracking(orderId, { payment }) }
-    finally { setSavingPay(null) }
+    // no-op: payment tracking removed from this tab
+  }
+
+  const handleDelete = async (id) => {
+    setDeleting(true)
+    try { await deleteOrder(id); setConfirmDel(null) }
+    finally { setDeleting(false) }
   }
 
   const saveLeg = async (orderId, legKey, carKey, carrier, number) => {
@@ -243,6 +248,10 @@ export default function TrackingTab({ orders, tracking, carriers, costs = [], up
                         Stage updated {new Date(stageUpdated).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}
                       </span>
                     )}
+                    <button className="btn-ghost btn-sm" title="Delete order" style={{color:'var(--red)'}}
+                      onClick={e => { e.stopPropagation(); setConfirmDel(order.id) }}>
+                      <Trash2 size={14} />
+                    </button>
                   </div>
                 </div>
 
@@ -268,26 +277,7 @@ export default function TrackingTab({ orders, tracking, carriers, costs = [], up
                     })}
                   </div>
 
-                  {/* Payment row */}
-                  <div className="pay-row">
-                    <span className="flex-center gap-6 text-sm text-muted">
-                      🗂 Payment · {t.payment_updated_at
-                        ? `updated ${new Date(t.payment_updated_at).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}`
-                        : 'not set'}
-                    </span>
-                    <div className="pay-seg">
-                      {PAYMENT_STATES.map(p => (
-                        <button key={p}
-                          className={`pay-seg-btn ${pay === p ? 'pay-seg-active' : ''}`}
-                          disabled={savingPay === order.id}
-                          onClick={() => setPayment(order.id, p)}>
-                          {p}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Tracking legs — 3 legs matching JEI */}
+                  {/* Tracking legs — 3 legs */}
                   <div className="tracking-legs-row">
                     <div className="tracking-legs-label text-sm text-muted">
                       🚚 Tracking
@@ -320,6 +310,22 @@ export default function TrackingTab({ orders, tracking, carriers, costs = [], up
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* Confirm delete */}
+      {confirmDel && (
+        <div className="overlay">
+          <div className="confirm-modal">
+            <h3>Delete this order?</h3>
+            <p>This will permanently remove the order from all tabs (Orders, Invoice, Cost). <strong>This cannot be undone.</strong></p>
+            <div className="confirm-actions">
+              <button className="btn btn-outline" onClick={() => setConfirmDel(null)}>Cancel</button>
+              <button className="btn btn-danger" disabled={deleting} onClick={() => handleDelete(confirmDel)}>
+                {deleting ? 'Deleting…' : 'Yes, Delete'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

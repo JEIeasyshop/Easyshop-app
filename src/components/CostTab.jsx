@@ -8,10 +8,12 @@ import { formatCurrency } from '../lib/pricing'
 const DIR_LABEL  = { us_jkt: 'US → JKT', jkt_us: 'JKT → US' }
 const DEFAULT_FX = 15850
 
-export default function CostTab({ costs, addCostLine, removeCostLine, updateCostNotes, setDoneFlag, completeCost }) {
+export default function CostTab({ costs, addCostLine, removeCostLine, updateCostNotes, setDoneFlag, completeCost, deleteOrder }) {
   const [selectedId, setSelectedId] = useState(null)
   const [search, setSearch]         = useState('')
   const [completing, setCompleting] = useState(false)
+  const [confirmDel, setConfirmDel] = useState(null)
+  const [deleting, setDeleting]     = useState(false)
 
   const [lineDesc, setLineDesc]     = useState('')
   const [lineAmt, setLineAmt]       = useState('')
@@ -166,6 +168,10 @@ export default function CostTab({ costs, addCostLine, removeCostLine, updateCost
                       Rp {Math.round(profitIDR).toLocaleString('id-ID')}
                     </div>
                   </div>
+                  <button className="btn-ghost btn-sm" title="Delete order" style={{color:'var(--red)'}}
+                    onClick={e => { e.stopPropagation(); setConfirmDel(rec.original_order_id) }}>
+                    <Trash2 size={14} />
+                  </button>
                 </div>
               </div>
             )
@@ -354,6 +360,31 @@ export default function CostTab({ costs, addCostLine, removeCostLine, updateCost
           )
         })()}
       </>)}
+
+      {/* Confirm delete */}
+      {confirmDel && (
+        <div className="overlay">
+          <div className="confirm-modal">
+            <h3>Delete this order?</h3>
+            <p>This will permanently remove the order from all tabs (Orders, Tracking, Invoice). <strong>This cannot be undone.</strong></p>
+            <div className="confirm-actions">
+              <button className="btn btn-outline" onClick={() => setConfirmDel(null)}>Cancel</button>
+              <button className="btn btn-danger" disabled={deleting}
+                onClick={async () => {
+                  setDeleting(true)
+                  try {
+                    // delete order + all related rows including this cost record
+                    await deleteOrder(confirmDel)
+                    setConfirmDel(null)
+                    setSelectedId(null)
+                  } finally { setDeleting(false) }
+                }}>
+                {deleting ? 'Deleting…' : 'Yes, Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

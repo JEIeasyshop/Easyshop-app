@@ -33,13 +33,15 @@ function stageBadge(order, tRow) {
 export default function InvoiceTab({
   orders, tracking, invoices, costs,
   addInvoiceCost, removeInvoiceCost, lockInvoiceTotal, completeOrder,
-  updateTracking, setDoneFlag,
+  updateTracking, setDoneFlag, deleteOrder,
 }) {
   const [selectedId, setSelectedId]     = useState(null)
   const [search, setSearch]             = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
   const [savingPay, setSavingPay]       = useState(null)
   const [completing, setCompleting]     = useState(false)
+  const [confirmDel, setConfirmDel]     = useState(null)
+  const [deleting, setDeleting]         = useState(false)
 
   // Add cost line
   const [costDesc, setCostDesc]     = useState('')
@@ -257,6 +259,10 @@ export default function InvoiceTab({
                   <span style={{fontWeight:700, fontSize:14, whiteSpace:'nowrap', color: isPaid ? 'var(--green)' : 'var(--text)'}}>
                     Rp {Math.round(totalIDR).toLocaleString('id-ID')}
                   </span>
+                  <button className="btn-ghost btn-sm" title="Delete order" style={{color:'var(--red)', flexShrink:0}}
+                    onClick={e => { e.stopPropagation(); setConfirmDel(order.id) }}>
+                    <Trash2 size={14} />
+                  </button>
                 </div>
               </div>
             )
@@ -498,6 +504,23 @@ export default function InvoiceTab({
           )
         })()}
       </>)}
+
+      {/* Confirm delete */}
+      {confirmDel && (
+        <div className="overlay">
+          <div className="confirm-modal">
+            <h3>Delete this order?</h3>
+            <p>This will permanently remove the order from all tabs (Tracking, Cost). <strong>This cannot be undone.</strong></p>
+            <div className="confirm-actions">
+              <button className="btn btn-outline" onClick={() => setConfirmDel(null)}>Cancel</button>
+              <button className="btn btn-danger" disabled={deleting}
+                onClick={async () => { setDeleting(true); try { await deleteOrder(confirmDel); setConfirmDel(null); setSelectedId(null) } finally { setDeleting(false) } }}>
+                {deleting ? 'Deleting…' : 'Yes, Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
