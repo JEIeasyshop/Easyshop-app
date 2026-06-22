@@ -471,6 +471,13 @@ export function useAppData() {
     await reload()
   }, [reload])
 
+  // Archive by orderId — looks up the cost record and calls manualArchive
+  const archiveOrder = useCallback(async (orderId) => {
+    const costRec = costs.find(c => c.original_order_id === orderId)
+    if (!costRec) throw new Error('Cost record not found for order')
+    await manualArchive(costRec.id)
+  }, [costs, manualArchive])
+
   const completeCost = useCallback(async (costId) => {
     const rec = costs.find(c => c.id === costId)
     if (!rec) throw new Error('Cost record not found')
@@ -584,7 +591,7 @@ export function useAppData() {
     // Complete invoice → costs
     completeOrder,
     // Costs
-    addCostLine, removeCostLine, updateCostNotes, setDoneFlag, completeCost, manualArchive,
+    addCostLine, removeCostLine, updateCostNotes, setDoneFlag, completeCost, manualArchive, archiveOrder,
     // Completed archive
     revertCompleted, deleteCompleted, cleanupExpired,
     // Customers

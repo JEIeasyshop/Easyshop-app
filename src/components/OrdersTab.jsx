@@ -2,7 +2,7 @@
 // Grouped by shipment stage by default. Filter chips to switch view.
 import { useState, useMemo } from 'react'
 import { Plus, Package, Download, Search, Pencil, Trash2 } from 'lucide-react'
-import OrderForm from './OrderForm'
+import CompleteButton from './CompleteButton'
 import { getStageLabel, getStageSequence, isFinalStage, STAGE_LABELS } from '../lib/data'
 import { formatCurrency } from '../lib/pricing'
 
@@ -60,7 +60,7 @@ function exportCSV(orders, tracking) {
 // All possible stage labels for filter chips
 const STAGE_FILTER_OPTIONS = ['All', ...Object.values(STAGE_LABELS)]
 
-export default function OrdersTab({ orders, tracking, costs = [], addOrder, updateOrder, deleteOrder, customers = [], addCustomer }) {
+export default function OrdersTab({ orders, tracking, costs = [], addOrder, updateOrder, deleteOrder, customers = [], addCustomer, archiveOrder }) {
   const [showForm, setShowForm]     = useState(false)
   const [editOrder, setEditOrder]   = useState(null)
   const [confirmDel, setConfirmDel] = useState(null)
@@ -161,6 +161,7 @@ export default function OrdersTab({ orders, tracking, costs = [], addOrder, upda
         </td>
         <td>
           <div className="flex-center gap-4">
+            <CompleteButton orderId={o.id} costs={costs} archiveOrder={archiveOrder} />
             <button className="btn-ghost btn-sm" title="Edit" onClick={() => setEditOrder(o)}><Pencil size={14} /></button>
             <button className="btn-ghost btn-sm" title="Delete" style={{color:'var(--red)'}} onClick={() => setConfirmDel(o.id)}><Trash2 size={14} /></button>
           </div>

@@ -4,6 +4,7 @@
 // Paid + Cost Done → auto-archives to Completed.
 import { useState, useMemo } from 'react'
 import { FileText, Printer, Plus, Search, Trash2, CheckCircle, Check } from 'lucide-react'
+import CompleteButton from './CompleteButton'
 import { getStageSequence, getStageLabel } from '../lib/data'
 import { formatCurrency } from '../lib/pricing'
 import { generateInvoicePDF } from '../lib/pdf'
@@ -33,7 +34,7 @@ function stageBadge(order, tRow) {
 export default function InvoiceTab({
   orders, tracking, invoices, costs,
   addInvoiceCost, removeInvoiceCost, lockInvoiceTotal, completeOrder,
-  updateTracking, setDoneFlag, deleteOrder,
+  updateTracking, setDoneFlag, deleteOrder, archiveOrder,
 }) {
   const [selectedId, setSelectedId]     = useState(null)
   const [search, setSearch]             = useState('')
@@ -284,6 +285,9 @@ export default function InvoiceTab({
                     onClick={e => { e.stopPropagation(); setConfirmDel(order.id) }}>
                     <Trash2 size={14} />
                   </button>
+                  <span onClick={e => e.stopPropagation()}>
+                    <CompleteButton orderId={order.id} costs={costs} archiveOrder={archiveOrder} />
+                  </span>
                 </div>
               </div>
             )
@@ -512,15 +516,7 @@ export default function InvoiceTab({
                     onClick={() => generateInvoicePDF(selected, inv, lines)}>
                     <Printer size={13} /> PDF
                   </button>
-                  {completing
-                    ? <span className="text-sm text-muted">Archiving…</span>
-                    : invDone && costDone && (
-                      <button className="btn btn-green btn-sm"
-                        onClick={() => handleCompleteInvoice(selected.id)}>
-                        <CheckCircle size={13} /> Archive Now
-                      </button>
-                    )
-                  }
+                  <CompleteButton orderId={selected.id} costs={costs} archiveOrder={archiveOrder} />
                 </div>
               </div>
             </div>

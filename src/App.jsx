@@ -33,7 +33,7 @@ function Dashboard({ session, role }) {
     updateTracking, advanceStage,
     upsertInvoice, addInvoiceCost, removeInvoiceCost, lockInvoiceTotal,
     completeOrder,
-    addCostLine, removeCostLine, updateCostNotes, setDoneFlag, completeCost, manualArchive,
+    addCostLine, removeCostLine, updateCostNotes, setDoneFlag, completeCost, manualArchive, archiveOrder,
     revertCompleted, deleteCompleted, cleanupExpired,
     addCustomer, updateCustomer, deleteCustomer,
   } = useAppData()
@@ -85,13 +85,14 @@ function Dashboard({ session, role }) {
               orders={orders} tracking={tracking} costs={costs}
               addOrder={addOrder} updateOrder={updateOrder} deleteOrder={deleteOrder}
               customers={customers} addCustomer={addCustomer}
+              archiveOrder={archiveOrder}
             />
           )}
           {tab === 'tracking' && (
             <TrackingTab
               orders={orders} tracking={tracking} carriers={carriers} costs={costs}
               updateTracking={updateTracking} advanceStage={advanceStage}
-              deleteOrder={deleteOrder}
+              deleteOrder={deleteOrder} archiveOrder={archiveOrder}
             />
           )}
           {tab === 'invoices' && (
@@ -100,7 +101,7 @@ function Dashboard({ session, role }) {
               addInvoiceCost={addInvoiceCost} removeInvoiceCost={removeInvoiceCost}
               lockInvoiceTotal={lockInvoiceTotal} completeOrder={completeOrder}
               updateTracking={updateTracking} setDoneFlag={setDoneFlag}
-              deleteOrder={deleteOrder}
+              deleteOrder={deleteOrder} archiveOrder={archiveOrder}
             />
           )}
           {tab === 'cost' && (

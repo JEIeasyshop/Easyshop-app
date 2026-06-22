@@ -3,6 +3,7 @@
 // per-card checkpoint timeline, payment segment, 3-leg tracking numbers
 import { useState, useMemo } from 'react'
 import { Truck, Check, ExternalLink, Plus, Search, Trash2 } from 'lucide-react'
+import CompleteButton from './CompleteButton'
 import { getStageLabel, getStageSequence, isFinalStage } from '../lib/data'
 
 // Stage filter options — All + each stage label
@@ -68,7 +69,7 @@ function TrackingLeg({ label, carrier, number, carriers, onSave }) {
   )
 }
 
-export default function TrackingTab({ orders, tracking, carriers, costs = [], updateTracking, advanceStage, deleteOrder }) {
+export default function TrackingTab({ orders, tracking, carriers, costs = [], updateTracking, advanceStage, deleteOrder, archiveOrder }) {
   const [stageFilter, setStageFilter] = useState('All')
   const [search, setSearch]           = useState('')
   const [advancing, setAdvancing]     = useState(null)
@@ -252,6 +253,7 @@ export default function TrackingTab({ orders, tracking, carriers, costs = [], up
                       onClick={e => { e.stopPropagation(); setConfirmDel(order.id) }}>
                       <Trash2 size={14} />
                     </button>
+                    <CompleteButton orderId={order.id} costs={costs} archiveOrder={archiveOrder} />
                   </div>
                 </div>
 
