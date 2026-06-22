@@ -350,64 +350,91 @@ export default function CostTab({ costs, addCostLine, removeCostLine, updateCost
                 </div>
               </div>
 
-              {/* Status + Cost Completed toggle at bottom */}
+
+              {/* Status bar — 3 criteria + single Complete Order button */}
               <div style={{
-                display:'flex', alignItems:'center', justifyContent:'space-between',
-                marginTop:16, padding:'14px 18px',
+                marginTop:16, padding:'16px 20px',
                 background:'var(--gray-50)', borderRadius:'var(--r-md)',
                 border:'1px solid var(--gray-200)',
               }}>
-                <div className="flex-center gap-16">
-                  <div className="flex-center gap-8">
-                    <div style={{width:20, height:20, borderRadius:'50%', border:`2px solid ${selected.tracking_done?'var(--green)':'var(--gray-300)'}`, background:selected.tracking_done?'var(--green)':'transparent', display:'flex', alignItems:'center', justifyContent:'center'}}>
-                      {selected.tracking_done && <Check size={11} color="white" strokeWidth={3} />}
+                {/* 3 criteria checklist */}
+                <div className="flex-center gap-20" style={{marginBottom:16}}>
+                  {[
+                    { done: selected.tracking_done, label: 'Shipment delivered' },
+                    { done: invDone,                label: 'Invoice paid' },
+                    { done: costDone,               label: 'Cost completed' },
+                  ].map((c, i) => (
+                    <div key={i} className="flex-center gap-8">
+                      <div style={{
+                        width:22, height:22, borderRadius:'50%', flexShrink:0,
+                        border:`2px solid ${c.done ? 'var(--green)' : 'var(--gray-300)'}`,
+                        background: c.done ? 'var(--green)' : 'transparent',
+                        display:'flex', alignItems:'center', justifyContent:'center',
+                        transition:'all 0.2s',
+                      }}>
+                        {c.done && <Check size={12} color="white" strokeWidth={3} />}
+                      </div>
+                      <span style={{
+                        fontSize:13, fontWeight: c.done ? 700 : 400,
+                        color: c.done ? 'var(--green)' : 'var(--gray-400)',
+                      }}>{c.label}</span>
                     </div>
-                    <span className="text-sm" style={{color:selected.tracking_done?'var(--green)':'var(--gray-400)', fontWeight:selected.tracking_done?700:400}}>
-                      Shipment {selected.tracking_done ? 'done ✓' : 'pending'}
-                    </span>
-                  </div>
-                  <div className="flex-center gap-8">
-                    <div style={{width:20, height:20, borderRadius:'50%', border:`2px solid ${invDone?'var(--green)':'var(--gray-300)'}`, background:invDone?'var(--green)':'transparent', display:'flex', alignItems:'center', justifyContent:'center'}}>
-                      {invDone && <Check size={11} color="white" strokeWidth={3} />}
-                    </div>
-                    <span className="text-sm" style={{color:invDone?'var(--green)':'var(--gray-400)', fontWeight:invDone?700:400}}>
-                      Invoice {invDone ? 'done ✓' : 'pending'}
-                    </span>
-                  </div>
-                  {selected.tracking_done && invDone && costDone && (
-                    <button className="btn btn-green btn-sm"
-                      onClick={async () => { if (manualArchive) await manualArchive(selected.id) }}>
-                      <CheckCircle size={13} /> Archive Now
-                    </button>
-                  )}
+                  ))}
                 </div>
 
-                {/* Cost Completed toggle — prominent, bottom right */}
+                {/* Single action button */}
                 <button
                   disabled={togglingCost}
-                  onClick={handleToggleCostDone}
+                  onClick={async () => {
+                    setTogglingCost(true)
+                    try {
+                      if (!costDone) {
+                        // Mark cost done — setDoneFlag will auto-archive if all 3 met
+                        await setDoneFlag(selected.id, 'cost_done', true)
+                      } else if (selected.tracking_done && invDone && costDone) {
+                        // All already done but not archived — force archive
+                        await manualArchive(selected.id)
+                      } else {
+                        // Unmark cost done
+                        await setDoneFlag(selected.id, 'cost_done', false)
+                      }
+                    } finally { setTogglingCost(false) }
+                  }}
                   style={{
-                    display:'flex', alignItems:'center', gap:10,
-                    padding:'10px 18px',
-                    background: costDone ? 'var(--green)' : 'var(--white)',
-                    border: `2px solid ${costDone ? 'var(--green)' : 'var(--gray-300)'}`,
-                    borderRadius:'var(--r-md)',
-                    cursor:'pointer',
+                    width:'100%', padding:'12px 20px',
+                    display:'flex', alignItems:'center', justifyContent:'center', gap:10,
+                    background: (selected.tracking_done && invDone && costDone)
+                      ? 'var(--green)'
+                      : costDone
+                        ? 'var(--green)'
+                        : 'var(--navy)',
+                    border:'none', borderRadius:'var(--r-md)',
+                    cursor: togglingCost ? 'not-allowed' : 'pointer',
                     transition:'all 0.2s',
                     fontFamily:'var(--font-brand)',
-                    fontWeight:700, fontSize:13,
-                    color: costDone ? 'white' : 'var(--gray-600)',
+                    fontWeight:700, fontSize:14,
+                    color:'white', opacity: togglingCost ? 0.7 : 1,
                   }}>
-                  <div style={{
-                    width:22, height:22, borderRadius:'50%',
-                    border:`2px solid ${costDone ? 'rgba(255,255,255,0.6)' : 'var(--gray-300)'}`,
-                    background: costDone ? 'rgba(255,255,255,0.25)' : 'transparent',
-                    display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0,
-                  }}>
-                    {costDone && <Check size={12} color="white" strokeWidth={3} />}
-                  </div>
-                  {togglingCost ? 'Saving…' : costDone ? 'Cost Completed ✓' : 'Mark Cost Completed'}
+                  <CheckCircle size={16} />
+                  {togglingCost
+                    ? 'Processing…'
+                    : (selected.tracking_done && invDone && costDone)
+                      ? '✓ Complete — Move to Completed Tab'
+                      : costDone
+                        ? 'Cost marked ✓ — waiting for shipment & invoice'
+                        : 'Mark Cost as Completed'
+                  }
                 </button>
+
+                {(!selected.tracking_done || !invDone) && (
+                  <div className="text-sm text-muted" style={{marginTop:8, textAlign:'center'}}>
+                    {!selected.tracking_done && !invDone
+                      ? 'Waiting for shipment delivery and invoice payment'
+                      : !selected.tracking_done
+                        ? 'Waiting for shipment to be delivered'
+                        : 'Waiting for invoice to be marked as paid'}
+                  </div>
+                )}
               </div>
             </div>
           )
