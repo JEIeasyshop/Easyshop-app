@@ -193,14 +193,23 @@ export default function InvoiceTab({
         <p>All active orders. Mark as <strong>Paid</strong> when collected. Invoice ✓ + Cost ✓ = archived automatically.</p>
       </div>
 
-      {/* Filter + search */}
-      <div className="flex-center gap-8" style={{marginBottom:14, flexWrap:'wrap'}}>
-        {[['all','All'], ...PAY_STATES.map(p => [p, p])].map(([v, l]) => (
-          <button key={v} className={`stage-filter-chip ${filterStatus === v ? 'active' : ''}`}
-            onClick={() => setFilterStatus(v)}>
-            {l} <span className="stage-filter-count">{filterOptions[v] || 0}</span>
-          </button>
-        ))}
+      {/* Filter bar — dropdown + search */}
+      <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:16, flexWrap:'wrap'}}>
+        <select
+          value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+          style={{
+            height:36, padding:'0 32px 0 12px', border:'1.5px solid var(--gray-200)',
+            borderRadius:'var(--r-md)', fontSize:13, fontFamily:'var(--font-body)',
+            color: filterStatus !== 'all' ? 'var(--navy)' : 'var(--gray-600)',
+            fontWeight: filterStatus !== 'all' ? 700 : 400,
+            background:`var(--white) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238E97AD' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") no-repeat right 10px center`,
+            appearance:'none', cursor:'pointer', outline:'none',
+          }}>
+          <option value="all">All Status ({filterOptions.all || 0})</option>
+          {PAY_STATES.map(p => (
+            <option key={p} value={p}>{p} ({filterOptions[p] || 0})</option>
+          ))}
+        </select>
         <div className="search-wrap" style={{flex:1, minWidth:200, maxWidth:320, marginLeft:'auto'}}>
           <Search size={14} className="search-icon" />
           <input className="search-input" type="text" placeholder="Search invoices…"
@@ -226,29 +235,42 @@ export default function InvoiceTab({
             const prevDir  = idx > 0 ? grouped[idx-1].dir : null
             const showDir  = dir !== prevDir
             return (
-              <div key={`${dir}-${pay}`}>
-                {/* Bold direction header */}
+              <div key={`${dir}-${pay}`} style={{marginBottom:2}}>
+                {/* Direction label — pill + rule */}
                 {showDir && (
                   <div style={{
-                    padding:'10px 18px',
-                    background:'var(--navy)', color:'var(--gold)',
-                    fontFamily:'var(--font-brand)', fontWeight:800, fontSize:14,
-                    borderTop: idx > 0 ? '2px solid var(--navy)' : 'none',
+                    display:'flex', alignItems:'center', gap:10,
+                    padding: idx > 0 ? '20px 4px 8px' : '4px 4px 8px',
                   }}>
-                    {dirLabel}
+                    <span style={{
+                      display:'inline-flex', alignItems:'center',
+                      padding:'3px 10px', borderRadius:20,
+                      background:'var(--navy)', color:'var(--gold)',
+                      fontFamily:'var(--font-brand)', fontWeight:700, fontSize:12,
+                    }}>{dirLabel}</span>
+                    <div style={{flex:1, height:1, background:'var(--gray-100)'}} />
                   </div>
                 )}
-                {/* Payment sub-header */}
-                <div style={{
-                  padding:'7px 18px', background:'var(--gray-50)',
-                  borderBottom:'1px solid var(--gray-100)', borderTop:'1px solid var(--gray-100)',
-                  fontSize:11, fontWeight:700, color:'var(--gray-400)',
-                  textTransform:'uppercase', letterSpacing:'0.08em',
-                  display:'flex', justifyContent:'space-between',
-                }}>
-                  <span>{pay === 'Paid' ? '✓ ' : pay === 'Invoiced' ? '📋 ' : '⏳ '}{pay}</span>
-                  <span style={{fontWeight:500}}>{groupOrders.length}</span>
-                </div>
+                {/* Payment sub-group — left accent bar */}
+                {(() => {
+                  const payColor = pay === 'Paid' ? 'var(--green)' : pay === 'Invoiced' ? 'var(--blue)' : 'var(--amber)'
+                  const payBg    = pay === 'Paid' ? 'var(--green-bg)' : pay === 'Invoiced' ? 'var(--blue-bg)' : 'var(--amber-bg)'
+                  return (
+                    <div style={{
+                      display:'flex', alignItems:'center', gap:8,
+                      padding:'5px 4px 6px 12px',
+                      borderLeft:`3px solid ${payColor}`,
+                      marginBottom:4,
+                    }}>
+                      <span style={{fontSize:11, fontWeight:700, letterSpacing:'0.06em', textTransform:'uppercase', color:payColor}}>
+                        {pay === 'Paid' ? '✓ Paid' : pay === 'Invoiced' ? 'Invoiced' : 'Unpaid'}
+                      </span>
+                      <span style={{fontSize:11, fontWeight:600, padding:'1px 7px', borderRadius:10, background:payBg, color:payColor}}>
+                        {groupOrders.length}
+                      </span>
+                    </div>
+                  )
+                })()}
                 {groupOrders.map(order => {
             const inv     = getInv(order.id)
             const tRow    = getTrow(order.id)

@@ -114,59 +114,58 @@ export default function CompletedTab({ completedOrders, revertCompleted, deleteC
       </div>
 
       {/* Header + search */}
-      <div className="page-header-row">
-        <div className="page-header" style={{marginBottom:0}}>
-          <h2>Completed</h2>
-          <p>Click a row to expand details</p>
+      {/* Toolbar — title + 3 dropdowns + search */}
+      <div style={{display:'flex', alignItems:'center', gap:10, marginBottom:16, flexWrap:'wrap'}}>
+        <div style={{flex:'0 0 auto'}}>
+          <h2 style={{margin:0, fontSize:18, fontFamily:'var(--font-brand)', fontWeight:800, color:'var(--navy)'}}>Completed</h2>
+          <p style={{margin:0, fontSize:12, color:'var(--gray-400)'}}>Click a row to expand details</p>
         </div>
-        <div className="search-wrap" style={{maxWidth:300}}>
-          <Search size={14} className="search-icon" />
-          <input className="search-input" type="text" placeholder="Search customer or goods…"
-            value={search} onChange={e => setSearch(e.target.value)} />
+        <div style={{marginLeft:'auto', display:'flex', alignItems:'center', gap:8, flexWrap:'wrap'}}>
+          {[
+            {
+              val: dirFilter, set: setDirFilter,
+              options:[
+                ['All', `All Routes (${completedOrders.length})`],
+                ['US → JKT', `US → JKT (${completedOrders.filter(c=>(c.order_snapshot||{}).direction==='us_jkt').length})`],
+                ['JKT → US', `JKT → US (${completedOrders.filter(c=>(c.order_snapshot||{}).direction==='jkt_us').length})`],
+                ['Other',    `Other (${completedOrders.filter(c=>!['us_jkt','jkt_us'].includes((c.order_snapshot||{}).direction)).length})`],
+              ]
+            },
+            {
+              val: serviceFilter, set: setServiceFilter,
+              options:[
+                ['All',           `All Service (${completedOrders.length})`],
+                ['Full Service',  `Full Service (${completedOrders.filter(c=>(c.order_snapshot||{}).service_type==='full_service').length})`],
+                ['Shipping Only', `Shipping Only (${completedOrders.filter(c=>(c.order_snapshot||{}).service_type!=='full_service').length})`],
+              ]
+            },
+            {
+              val: profitFilter, set: setProfitFilter,
+              options:[
+                ['All',        `All P&L (${completedOrders.length})`],
+                ['Profitable', `Profitable (${completedOrders.filter(c=>getProfitIDR(c)>=0).length})`],
+                ['Loss',       `Loss (${completedOrders.filter(c=>getProfitIDR(c)<0).length})`],
+              ]
+            },
+          ].map(({ val, set, options }, i) => (
+            <select key={i} value={val} onChange={e => set(e.target.value)}
+              style={{
+                height:36, padding:'0 32px 0 12px', border:'1.5px solid var(--gray-200)',
+                borderRadius:'var(--r-md)', fontSize:13, fontFamily:'var(--font-body)',
+                color: val !== 'All' ? 'var(--navy)' : 'var(--gray-600)',
+                fontWeight: val !== 'All' ? 700 : 400,
+                background:`var(--white) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238E97AD' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") no-repeat right 10px center`,
+                appearance:'none', cursor:'pointer', outline:'none',
+              }}>
+              {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          ))}
+          <div className="search-wrap" style={{width:240}}>
+            <Search size={14} className="search-icon" />
+            <input className="search-input" type="text" placeholder="Search customer or goods…"
+              value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
         </div>
-      </div>
-
-      {/* Direction filter */}
-      <div className="stage-filter-row" style={{marginBottom:8}}>
-        {[
-          ['All',      completedOrders.length],
-          ['US → JKT', completedOrders.filter(c=>(c.order_snapshot||{}).direction==='us_jkt').length],
-          ['JKT → US', completedOrders.filter(c=>(c.order_snapshot||{}).direction==='jkt_us').length],
-          ['Other',    completedOrders.filter(c=>!['us_jkt','jkt_us'].includes((c.order_snapshot||{}).direction)).length],
-        ].map(([v, count]) => (
-          <button key={v} className={`stage-filter-chip ${dirFilter === v ? 'active' : ''}`}
-            onClick={() => setDirFilter(v)}>
-            {v} <span className="stage-filter-count">{count}</span>
-          </button>
-        ))}
-      </div>
-
-      {/* Service type filter */}
-      <div className="stage-filter-row" style={{marginBottom:8}}>
-        {[
-          ['All',            completedOrders.length],
-          ['Full Service',   completedOrders.filter(c=>(c.order_snapshot||{}).service_type==='full_service').length],
-          ['Shipping Only',  completedOrders.filter(c=>(c.order_snapshot||{}).service_type!=='full_service').length],
-        ].map(([v, count]) => (
-          <button key={v} className={`stage-filter-chip ${serviceFilter === v ? 'active' : ''}`}
-            onClick={() => setServiceFilter(v)}>
-            {v} <span className="stage-filter-count">{count}</span>
-          </button>
-        ))}
-      </div>
-
-      {/* Profit filter */}
-      <div className="stage-filter-row" style={{marginBottom:16}}>
-        {[
-          ['All',        completedOrders.length],
-          ['Profitable', completedOrders.filter(c=>getProfitIDR(c)>=0).length],
-          ['Loss',       completedOrders.filter(c=>getProfitIDR(c)<0).length],
-        ].map(([v, count]) => (
-          <button key={v} className={`stage-filter-chip ${profitFilter === v ? 'active' : ''}`}
-            onClick={() => setProfitFilter(v)}>
-            {v === 'Profitable' ? '💰 ' : v === 'Loss' ? '📉 ' : ''}{v} <span className="stage-filter-count">{count}</span>
-          </button>
-        ))}
       </div>
 
       {filtered.length === 0 ? (

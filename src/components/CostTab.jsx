@@ -113,41 +113,51 @@ export default function CostTab({ costs, addCostLine, removeCostLine, updateCost
 
   return (
     <div>
-      <div className="page-header-row">
-        <div className="page-header" style={{marginBottom:0}}>
-          <h2>Cost</h2>
-          <p>Track costs against each order. Invoice ✓ + Cost ✓ = archived to Completed.</p>
+      {/* Toolbar — title + filters + search in one row */}
+      <div style={{display:'flex', alignItems:'center', gap:10, marginBottom:16, flexWrap:'wrap'}}>
+        <div style={{flex:'0 0 auto'}}>
+          <h2 style={{margin:0, fontSize:18, fontFamily:'var(--font-brand)', fontWeight:800, color:'var(--navy)'}}>Cost</h2>
+          <p style={{margin:0, fontSize:12, color:'var(--gray-400)'}}>Invoice ✓ + Cost ✓ = archived</p>
         </div>
-        <div className="search-wrap" style={{maxWidth:280}}>
-          <Search size={14} className="search-icon" />
-          <input className="search-input" type="text" placeholder="Search…"
-            value={search} onChange={e => setSearch(e.target.value)} />
+        <div style={{marginLeft:'auto', display:'flex', alignItems:'center', gap:8, flexWrap:'wrap'}}>
+          {/* Revenue dropdown */}
+          <select
+            value={groupFilter} onChange={e => setGroupFilter(e.target.value)}
+            style={{
+              height:36, padding:'0 32px 0 12px', border:'1.5px solid var(--gray-200)',
+              borderRadius:'var(--r-md)', fontSize:13, fontFamily:'var(--font-body)',
+              color: groupFilter !== 'All' ? 'var(--navy)' : 'var(--gray-600)',
+              fontWeight: groupFilter !== 'All' ? 700 : 400,
+              background:`var(--white) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238E97AD' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") no-repeat right 10px center`,
+              appearance:'none', cursor:'pointer', outline:'none',
+            }}>
+            <option value="All">All Revenue ({costs.length})</option>
+            <option value="With Revenue">With Revenue ({costs.filter(c=>(c.total_revenue||0)>0).length})</option>
+            <option value="No Revenue Yet">No Revenue Yet ({costs.filter(c=>!(c.total_revenue||0)).length})</option>
+          </select>
+          {/* Direction dropdown */}
+          <select
+            value={dirFilter} onChange={e => setDirFilter(e.target.value)}
+            style={{
+              height:36, padding:'0 32px 0 12px', border:'1.5px solid var(--gray-200)',
+              borderRadius:'var(--r-md)', fontSize:13, fontFamily:'var(--font-body)',
+              color: dirFilter !== 'All' ? 'var(--navy)' : 'var(--gray-600)',
+              fontWeight: dirFilter !== 'All' ? 700 : 400,
+              background:`var(--white) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238E97AD' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") no-repeat right 10px center`,
+              appearance:'none', cursor:'pointer', outline:'none',
+            }}>
+            <option value="All">All Routes ({costs.length})</option>
+            <option value="US → JKT">US → JKT ({costs.filter(c=>(c.order_snapshot||{}).direction==='us_jkt').length})</option>
+            <option value="JKT → US">JKT → US ({costs.filter(c=>(c.order_snapshot||{}).direction==='jkt_us').length})</option>
+            <option value="Other">Other ({costs.filter(c=>!['us_jkt','jkt_us'].includes((c.order_snapshot||{}).direction)).length})</option>
+          </select>
+          {/* Search */}
+          <div className="search-wrap" style={{width:220}}>
+            <Search size={14} className="search-icon" />
+            <input className="search-input" type="text" placeholder="Search…"
+              value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
         </div>
-      </div>
-
-      {/* Revenue group filter chips */}
-      <div className="stage-filter-row" style={{marginBottom:8}}>
-        {[['All', costs.length], ['With Revenue', costs.filter(c=>(c.total_revenue||0)>0).length], ['No Revenue Yet', costs.filter(c=>!c.total_revenue||c.total_revenue===0).length]].map(([v, count]) => (
-          <button key={v} className={`stage-filter-chip ${groupFilter === v ? 'active' : ''}`}
-            onClick={() => setGroupFilter(v)}>
-            {v} <span className="stage-filter-count">{count}</span>
-          </button>
-        ))}
-      </div>
-
-      {/* Direction filter chips */}
-      <div className="stage-filter-row" style={{marginBottom:14}}>
-        {[
-          ['All',      costs.length],
-          ['US → JKT', costs.filter(c=>(c.order_snapshot||{}).direction==='us_jkt').length],
-          ['JKT → US', costs.filter(c=>(c.order_snapshot||{}).direction==='jkt_us').length],
-          ['Other',    costs.filter(c=>!['us_jkt','jkt_us'].includes((c.order_snapshot||{}).direction)).length],
-        ].map(([v, count]) => (
-          <button key={v} className={`stage-filter-chip ${dirFilter === v ? 'active' : ''}`}
-            onClick={() => setDirFilter(v)}>
-            {v} <span className="stage-filter-count">{count}</span>
-          </button>
-        ))}
       </div>
 
       {costs.length === 0 ? (
@@ -168,28 +178,41 @@ export default function CostTab({ costs, addCostLine, removeCostLine, updateCost
             const prevDir  = idx > 0 ? grouped[idx-1].dir : null
             const showDir  = dir !== prevDir
             return (
-              <div key={`${dir}-${grp}`}>
-                {/* Bold direction header */}
+              <div key={`${dir}-${grp}`} style={{marginBottom: 2}}>
+                {/* Direction label — shown once per direction as a subtle pill row */}
                 {showDir && (
                   <div style={{
-                    padding:'10px 18px',
-                    background:'var(--navy)', color:'var(--gold)',
-                    fontFamily:'var(--font-brand)', fontWeight:800, fontSize:14,
-                    borderTop: idx > 0 ? '2px solid var(--navy)' : 'none',
+                    display:'flex', alignItems:'center', gap:10,
+                    padding: idx > 0 ? '20px 4px 8px' : '4px 4px 8px',
                   }}>
-                    {dirLabel}
+                    <span style={{
+                      display:'inline-flex', alignItems:'center',
+                      padding:'3px 10px', borderRadius:20,
+                      background:'var(--navy)', color:'var(--gold)',
+                      fontFamily:'var(--font-brand)', fontWeight:700, fontSize:12,
+                      letterSpacing:'0.03em',
+                    }}>{dirLabel}</span>
+                    <div style={{flex:1, height:1, background:'var(--gray-100)'}} />
                   </div>
                 )}
-                {/* Revenue sub-header */}
+                {/* Revenue sub-group label — left accent bar, not a full-width banner */}
                 <div style={{
-                  padding:'7px 18px', background:'var(--gray-50)',
-                  borderBottom:'1px solid var(--gray-100)', borderTop:'1px solid var(--gray-100)',
-                  fontSize:11, fontWeight:700, color:'var(--gray-400)',
-                  textTransform:'uppercase', letterSpacing:'0.08em',
-                  display:'flex', justifyContent:'space-between',
+                  display:'flex', alignItems:'center', gap:8,
+                  padding:'5px 4px 6px 12px',
+                  borderLeft: `3px solid ${grp === 'With Revenue' ? 'var(--green)' : 'var(--gray-200)'}`,
+                  marginBottom:4,
                 }}>
-                  <span>{grp === 'With Revenue' ? '💰 Gross' : '⏳ No Revenue Yet'}</span>
-                  <span style={{fontWeight:500}}>{groupRecs.length}</span>
+                  <span style={{
+                    fontSize:11, fontWeight:700, letterSpacing:'0.06em', textTransform:'uppercase',
+                    color: grp === 'With Revenue' ? 'var(--green)' : 'var(--gray-400)',
+                  }}>
+                    {grp === 'With Revenue' ? 'Gross' : 'No Revenue Yet'}
+                  </span>
+                  <span style={{
+                    fontSize:11, fontWeight:600, padding:'1px 7px', borderRadius:10,
+                    background: grp === 'With Revenue' ? 'var(--green-bg)' : 'var(--gray-100)',
+                    color: grp === 'With Revenue' ? 'var(--green)' : 'var(--gray-400)',
+                  }}>{groupRecs.length}</span>
                 </div>
                 {groupRecs.map(rec => {
             const o         = rec.order_snapshot || {}
