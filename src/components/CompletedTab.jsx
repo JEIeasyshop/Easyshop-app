@@ -1,5 +1,5 @@
 // src/components/CompletedTab.jsx
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Archive, ChevronDown, ChevronUp, RotateCcw, Trash2, Download, Search } from 'lucide-react'
 import { formatCurrency } from '../lib/pricing'
 import { generateInvoicePDF } from '../lib/pdf'
@@ -12,27 +12,20 @@ export default function CompletedTab({ completedOrders, revertCompleted, deleteC
   const [confirmDel, setConfirmDel] = useState(null)
   const [confirmRev, setConfirmRev] = useState(null)
   const [actionBusy, setActionBusy] = useState(false)
-  const [search, setSearch]         = useState('')
+  const [search, setSearch]               = useState('')
+  const [dirFilter, setDirFilter]         = useState('All')   // All | US → JKT | JKT → US | Other
+  const [serviceFilter, setServiceFilter] = useState('All')   // All | Full Service | Shipping Only
+  const [profitFilter, setProfitFilter]   = useState('All')   // All | Profitable | Loss
 
-  const filtered = completedOrders.filter(c => {
-    if (!search.trim()) return true
-    const q = search.toLowerCase()
-    const o = c.order_snapshot || {}
-    return (o.customer_name || '').toLowerCase().includes(q) ||
-           (o.goods_description || '').toLowerCase().includes(q)
-  })
-
-  // Revenue = invoice total
+  // ── Helpers (must be defined before filtered useMemo) ────
   const getRevenue = (c) => {
     const inv = c.invoice_snapshot || {}
     const ord = c.order_snapshot   || {}
     const cur = inv.currency || ord.rate_currency || 'USD'
     return { amount: Number(inv.total || 0), currency: cur }
   }
-
-  // Cost = sum of cost_lines converted to same currency using usd_rate
   const getCostIDR = (c) => {
-    const cost  = c.cost_snapshot  || {}
+    const cost  = c.cost_snapshot   || {}
     const inv   = c.invoice_snapshot|| {}
     const lines = cost.cost_lines   || []
     const fx    = Number(cost.usd_rate || inv.usd_rate || DEFAULT_FX)
@@ -41,17 +34,39 @@ export default function CompletedTab({ completedOrders, revertCompleted, deleteC
       return s + (l.currency === 'IDR' ? sub : sub * fx)
     }, 0)
   }
-
   const getRevIDR = (c) => {
-    const rev = getRevenue(c)
-    const inv = c.invoice_snapshot || {}
-    const cost = c.cost_snapshot || {}
-    const fx = Number(cost.usd_rate || inv.usd_rate || DEFAULT_FX)
+    const rev  = getRevenue(c)
+    const inv  = c.invoice_snapshot || {}
+    const cost = c.cost_snapshot    || {}
+    const fx   = Number(cost.usd_rate || inv.usd_rate || DEFAULT_FX)
     return rev.currency === 'IDR' ? rev.amount : rev.amount * fx
   }
-
-  // Profit = revenue - cost (in IDR)
   const getProfitIDR = (c) => getRevIDR(c) - getCostIDR(c)
+
+  const filtered = useMemo(() => completedOrders.filter(c => {
+    const o = c.order_snapshot || {}
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      if (!(o.customer_name || '').toLowerCase().includes(q) &&
+          !(o.goods_description || '').toLowerCase().includes(q)) return false
+    }
+    if (dirFilter !== 'All') {
+      const dl = DIR_LABEL[o.direction] || 'Other'
+      if (dirFilter === 'Other' ? !!DIR_LABEL[o.direction] : dl !== dirFilter) return false
+    }
+    if (serviceFilter !== 'All') {
+      const sl = o.service_type === 'full_service' ? 'Full Service' : 'Shipping Only'
+      if (sl !== serviceFilter) return false
+    }
+    if (profitFilter !== 'All') {
+      const p = getProfitIDR(c)
+      if (profitFilter === 'Profitable' && p < 0)  return false
+      if (profitFilter === 'Loss'       && p >= 0) return false
+    }
+    return true
+  }), [completedOrders, search, dirFilter, serviceFilter, profitFilter])
+
+  // (helpers moved above filtered useMemo)
 
   // KPIs
   const totalRevIDR  = completedOrders.reduce((s, c) => s + getRevIDR(c), 0)
@@ -111,12 +126,55 @@ export default function CompletedTab({ completedOrders, revertCompleted, deleteC
         </div>
       </div>
 
+      {/* Direction filter */}
+      <div className="stage-filter-row" style={{marginBottom:8}}>
+        {[
+          ['All',      completedOrders.length],
+          ['US → JKT', completedOrders.filter(c=>(c.order_snapshot||{}).direction==='us_jkt').length],
+          ['JKT → US', completedOrders.filter(c=>(c.order_snapshot||{}).direction==='jkt_us').length],
+          ['Other',    completedOrders.filter(c=>!['us_jkt','jkt_us'].includes((c.order_snapshot||{}).direction)).length],
+        ].map(([v, count]) => (
+          <button key={v} className={`stage-filter-chip ${dirFilter === v ? 'active' : ''}`}
+            onClick={() => setDirFilter(v)}>
+            {v} <span className="stage-filter-count">{count}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Service type filter */}
+      <div className="stage-filter-row" style={{marginBottom:8}}>
+        {[
+          ['All',            completedOrders.length],
+          ['Full Service',   completedOrders.filter(c=>(c.order_snapshot||{}).service_type==='full_service').length],
+          ['Shipping Only',  completedOrders.filter(c=>(c.order_snapshot||{}).service_type!=='full_service').length],
+        ].map(([v, count]) => (
+          <button key={v} className={`stage-filter-chip ${serviceFilter === v ? 'active' : ''}`}
+            onClick={() => setServiceFilter(v)}>
+            {v} <span className="stage-filter-count">{count}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Profit filter */}
+      <div className="stage-filter-row" style={{marginBottom:16}}>
+        {[
+          ['All',        completedOrders.length],
+          ['Profitable', completedOrders.filter(c=>getProfitIDR(c)>=0).length],
+          ['Loss',       completedOrders.filter(c=>getProfitIDR(c)<0).length],
+        ].map(([v, count]) => (
+          <button key={v} className={`stage-filter-chip ${profitFilter === v ? 'active' : ''}`}
+            onClick={() => setProfitFilter(v)}>
+            {v === 'Profitable' ? '💰 ' : v === 'Loss' ? '📉 ' : ''}{v} <span className="stage-filter-count">{count}</span>
+          </button>
+        ))}
+      </div>
+
       {filtered.length === 0 ? (
         <div className="card mt-16">
           <div className="empty-state">
             <div className="empty-icon"><Archive size={26} /></div>
-            <h3>{search ? 'No results' : 'No completed orders'}</h3>
-            <p>{search ? 'Try a different search.' : 'Completed orders will appear here.'}</p>
+            <h3>{search || dirFilter !== 'All' || serviceFilter !== 'All' || profitFilter !== 'All' ? 'No results' : 'No completed orders'}</h3>
+            <p>{search || dirFilter !== 'All' || serviceFilter !== 'All' || profitFilter !== 'All' ? 'Try clearing the filters.' : 'Completed orders will appear here.'}</p>
           </div>
         </div>
       ) : (

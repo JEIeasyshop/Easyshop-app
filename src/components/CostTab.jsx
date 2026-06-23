@@ -9,9 +9,11 @@ const DIR_LABEL  = { us_jkt: 'US → JKT', jkt_us: 'JKT → US' }
 const DEFAULT_FX = 15850
 
 export default function CostTab({ costs, addCostLine, removeCostLine, updateCostNotes, setDoneFlag, completeCost, manualArchive, deleteOrder }) {
-  const [selectedId, setSelectedId] = useState(null)
-  const [search, setSearch]         = useState('')
-  const [completing, setCompleting] = useState(false)
+  const [selectedId, setSelectedId]   = useState(null)
+  const [search, setSearch]           = useState('')
+  const [groupFilter, setGroupFilter] = useState('All')   // FIX: was missing → caused "groupFilter is not defined"
+  const [dirFilter, setDirFilter]     = useState('All')   // NEW: filter by direction
+  const [completing, setCompleting]   = useState(false)
   const [confirmDel, setConfirmDel] = useState(null)
   const [deleting, setDeleting]     = useState(false)
 
@@ -35,6 +37,10 @@ export default function CostTab({ costs, addCostLine, removeCostLine, updateCost
       if (q && !(o.customer_name||'').toLowerCase().includes(q) && !(o.goods_description||'').toLowerCase().includes(q)) return false
       if (groupFilter === 'With Revenue')   return (c.total_revenue || 0) > 0
       if (groupFilter === 'No Revenue Yet') return !c.total_revenue || c.total_revenue === 0
+      if (dirFilter !== 'All') {
+        const dl = DIR_LABEL[o.direction] || 'Other'
+        if (dirFilter === 'Other' ? !!DIR_LABEL[o.direction] : dl !== dirFilter) return false
+      }
       return true
     })
 
@@ -56,7 +62,7 @@ export default function CostTab({ costs, addCostLine, removeCostLine, updateCost
       })
     })
     return result
-  }, [costs, search, groupFilter])
+  }, [costs, search, groupFilter, dirFilter])
 
   const selected = costs.find(c => c.id === selectedId)
 
@@ -119,11 +125,26 @@ export default function CostTab({ costs, addCostLine, removeCostLine, updateCost
         </div>
       </div>
 
-      {/* Group filter chips */}
-      <div className="stage-filter-row" style={{marginBottom:14}}>
+      {/* Revenue group filter chips */}
+      <div className="stage-filter-row" style={{marginBottom:8}}>
         {[['All', costs.length], ['With Revenue', costs.filter(c=>(c.total_revenue||0)>0).length], ['No Revenue Yet', costs.filter(c=>!c.total_revenue||c.total_revenue===0).length]].map(([v, count]) => (
           <button key={v} className={`stage-filter-chip ${groupFilter === v ? 'active' : ''}`}
             onClick={() => setGroupFilter(v)}>
+            {v} <span className="stage-filter-count">{count}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Direction filter chips */}
+      <div className="stage-filter-row" style={{marginBottom:14}}>
+        {[
+          ['All',      costs.length],
+          ['US → JKT', costs.filter(c=>(c.order_snapshot||{}).direction==='us_jkt').length],
+          ['JKT → US', costs.filter(c=>(c.order_snapshot||{}).direction==='jkt_us').length],
+          ['Other',    costs.filter(c=>!['us_jkt','jkt_us'].includes((c.order_snapshot||{}).direction)).length],
+        ].map(([v, count]) => (
+          <button key={v} className={`stage-filter-chip ${dirFilter === v ? 'active' : ''}`}
+            onClick={() => setDirFilter(v)}>
             {v} <span className="stage-filter-count">{count}</span>
           </button>
         ))}
