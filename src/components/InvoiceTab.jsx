@@ -68,11 +68,8 @@ export default function InvoiceTab({
     return counts
   }, [orders, tracking])
 
-  // Grouped by direction first, then payment status
+  // Grouped by payment status (default: Invoiced first, then Paid)
   const grouped = useMemo(() => {
-    const DIR_ORDER = ['us_jkt', 'jkt_us', 'other']
-    const PAY_ORDER = ['Unpaid', 'Invoiced', 'Paid']
-
     const filtered_orders = orders.filter(o => {
       if (filterStatus !== 'all' && getPayment(o.id) !== filterStatus) return false
       if (search.trim()) {
@@ -82,25 +79,15 @@ export default function InvoiceTab({
       }
       return true
     })
-
-    // Build direction → payment → orders
-    const byDir = {}
+    // Group by Unpaid / Invoiced / Paid
+    const groups = {}
     filtered_orders.forEach(o => {
-      const dir = o.direction || 'other'
-      const pay = getPayment(o.id)
-      if (!byDir[dir]) byDir[dir] = {}
-      if (!byDir[dir][pay]) byDir[dir][pay] = []
-      byDir[dir][pay].push(o)
+      const p = getPayment(o.id)
+      if (!groups[p]) groups[p] = []
+      groups[p].push(o)
     })
-
-    // Flatten
-    const result = []
-    DIR_ORDER.filter(d => byDir[d]).forEach(dir => {
-      PAY_ORDER.filter(p => byDir[dir][p]).forEach(pay => {
-        result.push({ dir, pay, orders: byDir[dir][pay] })
-      })
-    })
-    return result
+    const ORDER = ['Unpaid', 'Invoiced', 'Paid']
+    return Object.entries(groups).sort(([a], [b]) => ORDER.indexOf(a) - ORDER.indexOf(b))
   }, [orders, tracking, filterStatus, search])
 
   const selected  = orders.find(o => o.id === selectedId)
@@ -221,35 +208,20 @@ export default function InvoiceTab({
         <div className="inv-list">
           {grouped.length === 0 ? (
             <div style={{padding:'20px 18px', color:'var(--gray-400)', fontSize:13}}>No matching orders.</div>
-          ) : grouped.map(({ dir, pay, orders: groupOrders }, idx) => {
-            const dirLabel = DIR_LABEL[dir] || 'Other'
-            const prevDir  = idx > 0 ? grouped[idx-1].dir : null
-            const showDir  = dir !== prevDir
-            return (
-              <div key={`${dir}-${pay}`}>
-                {/* Bold direction header */}
-                {showDir && (
-                  <div style={{
-                    padding:'10px 18px',
-                    background:'var(--navy)', color:'var(--gold)',
-                    fontFamily:'var(--font-brand)', fontWeight:800, fontSize:14,
-                    borderTop: idx > 0 ? '2px solid var(--navy)' : 'none',
-                  }}>
-                    {dirLabel}
-                  </div>
-                )}
-                {/* Payment sub-header */}
-                <div style={{
-                  padding:'7px 18px', background:'var(--gray-50)',
-                  borderBottom:'1px solid var(--gray-100)', borderTop:'1px solid var(--gray-100)',
-                  fontSize:11, fontWeight:700, color:'var(--gray-400)',
-                  textTransform:'uppercase', letterSpacing:'0.08em',
-                  display:'flex', justifyContent:'space-between',
-                }}>
-                  <span>{pay === 'Paid' ? '✓ ' : pay === 'Invoiced' ? '📋 ' : '⏳ '}{pay}</span>
-                  <span style={{fontWeight:500}}>{groupOrders.length}</span>
-                </div>
-                {groupOrders.map(order => {
+          ) : grouped.map(([groupLabel, groupOrders]) => (
+            <div key={groupLabel}>
+              {/* Group header */}
+              <div style={{
+                padding:'7px 18px', background:'var(--gray-50)',
+                borderBottom:'1px solid var(--gray-100)', borderTop: '1px solid var(--gray-100)',
+                fontSize:11, fontWeight:700, color:'var(--gray-400)',
+                textTransform:'uppercase', letterSpacing:'0.08em',
+                display:'flex', justifyContent:'space-between',
+              }}>
+                <span>{groupLabel === 'Paid' ? '✓ ' : groupLabel === 'Invoiced' ? '📋 ' : '⏳ '}{groupLabel}</span>
+                <span style={{fontWeight:500}}>{groupOrders.length}</span>
+              </div>
+              {groupOrders.map(order => {
             const inv     = getInv(order.id)
             const tRow    = getTrow(order.id)
             const costRec = getCost(order.id)
@@ -320,9 +292,8 @@ export default function InvoiceTab({
               </div>
             )
           })}
-              </div>
-            )
-          })}
+            </div>
+          ))}
         </div>
 
         {/* Expanded invoice doc */}
