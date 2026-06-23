@@ -25,12 +25,11 @@ export default function CostTab({ costs, addCostLine, removeCostLine, updateCost
   const [savingRate, setSavingRate] = useState(false)
   const [togglingCost, setTogglingCost] = useState(false)
 
-  // Group by gross (revenue>0) vs net (profit calculation)
-  const COST_GROUPS = ['With Revenue', 'No Revenue Yet']
-  const [groupFilter, setGroupFilter] = useState('All') // 'All' | 'With Revenue' | 'No Revenue Yet'
-
+  // Group by direction first, then by gross/no-revenue
   const grouped = useMemo(() => {
+    const DIR_ORDER  = ['us_jkt', 'jkt_us', 'other']
     const q = search.toLowerCase().trim()
+
     const filteredCosts = costs.filter(c => {
       const o = c.order_snapshot || {}
       if (q && !(o.customer_name||'').toLowerCase().includes(q) && !(o.goods_description||'').toLowerCase().includes(q)) return false
@@ -38,11 +37,24 @@ export default function CostTab({ costs, addCostLine, removeCostLine, updateCost
       if (groupFilter === 'No Revenue Yet') return !c.total_revenue || c.total_revenue === 0
       return true
     })
-    const withRev    = filteredCosts.filter(c => (c.total_revenue || 0) > 0)
-    const withoutRev = filteredCosts.filter(c => !c.total_revenue || c.total_revenue === 0)
+
+    // Build direction → revenue group → records
+    const byDir = {}
+    filteredCosts.forEach(c => {
+      const o   = c.order_snapshot || {}
+      const dir = o.direction || 'other'
+      const grp = (c.total_revenue || 0) > 0 ? 'With Revenue' : 'No Revenue Yet'
+      if (!byDir[dir]) byDir[dir] = {}
+      if (!byDir[dir][grp]) byDir[dir][grp] = []
+      byDir[dir][grp].push(c)
+    })
+
     const result = []
-    if (withRev.length > 0)    result.push(['With Revenue', withRev])
-    if (withoutRev.length > 0) result.push(['No Revenue Yet', withoutRev])
+    DIR_ORDER.filter(d => byDir[d]).forEach(dir => {
+      ['With Revenue', 'No Revenue Yet'].filter(g => byDir[dir][g]).forEach(grp => {
+        result.push({ dir, grp, recs: byDir[dir][grp] })
+      })
+    })
     return result
   }, [costs, search, groupFilter])
 
@@ -130,20 +142,35 @@ export default function CostTab({ costs, addCostLine, removeCostLine, updateCost
         <div className="inv-list mt-16">
           {grouped.length === 0 ? (
             <div style={{padding:'20px 18px', color:'var(--gray-400)', fontSize:13}}>No matching records.</div>
-          ) : grouped.map(([groupLabel, groupRecs]) => (
-            <div key={groupLabel}>
-              {/* Group header */}
-              <div style={{
-                padding:'7px 18px', background:'var(--gray-50)',
-                borderBottom:'1px solid var(--gray-100)', borderTop:'1px solid var(--gray-100)',
-                fontSize:11, fontWeight:700, color:'var(--gray-400)',
-                textTransform:'uppercase', letterSpacing:'0.08em',
-                display:'flex', justifyContent:'space-between',
-              }}>
-                <span>{groupLabel === 'With Revenue' ? '💰 Gross' : '⏳ No Revenue Yet'}</span>
-                <span style={{fontWeight:500}}>{groupRecs.length}</span>
-              </div>
-              {groupRecs.map(rec => {
+          ) : grouped.map(({ dir, grp, recs: groupRecs }, idx) => {
+            const dirLabel = { us_jkt:'US → JKT', jkt_us:'JKT → US', other:'Other' }[dir] || 'Other'
+            const prevDir  = idx > 0 ? grouped[idx-1].dir : null
+            const showDir  = dir !== prevDir
+            return (
+              <div key={`${dir}-${grp}`}>
+                {/* Bold direction header */}
+                {showDir && (
+                  <div style={{
+                    padding:'10px 18px',
+                    background:'var(--navy)', color:'var(--gold)',
+                    fontFamily:'var(--font-brand)', fontWeight:800, fontSize:14,
+                    borderTop: idx > 0 ? '2px solid var(--navy)' : 'none',
+                  }}>
+                    {dirLabel}
+                  </div>
+                )}
+                {/* Revenue sub-header */}
+                <div style={{
+                  padding:'7px 18px', background:'var(--gray-50)',
+                  borderBottom:'1px solid var(--gray-100)', borderTop:'1px solid var(--gray-100)',
+                  fontSize:11, fontWeight:700, color:'var(--gray-400)',
+                  textTransform:'uppercase', letterSpacing:'0.08em',
+                  display:'flex', justifyContent:'space-between',
+                }}>
+                  <span>{grp === 'With Revenue' ? '💰 Gross' : '⏳ No Revenue Yet'}</span>
+                  <span style={{fontWeight:500}}>{groupRecs.length}</span>
+                </div>
+                {groupRecs.map(rec => {
             const o         = rec.order_snapshot || {}
             const revIDR    = getRevIDR(rec)
             const costIDR   = getCostIDR(rec)
@@ -214,8 +241,9 @@ export default function CostTab({ costs, addCostLine, removeCostLine, updateCost
               </div>
             )
           })}
-            </div>
-          ))}
+              </div>
+            )
+          })}
         </div>
 
         {/* Expanded cost panel */}

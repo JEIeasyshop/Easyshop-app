@@ -92,21 +92,36 @@ export default function OrdersTab({ orders, tracking, costs = [], addOrder, upda
     })
   }, [orders, tracking, stageFilter, search])
 
-  // Group by stage for default view
+  // Group by direction first, then by stage within each direction
   const grouped = useMemo(() => {
-    const groups = {}
-    filtered.forEach(o => {
-      const t = getT(o.id)
-      const label = t ? getStageLabel(o.service_type, t.current_stage) : 'No tracking'
-      if (!groups[label]) groups[label] = []
-      groups[label].push(o)
-    })
-    // Sort groups by stage number
+    // direction priority order
+    const DIR_ORDER = ['us_jkt', 'jkt_us', 'other']
     const stageOrder = Object.values(STAGE_LABELS)
-    return Object.entries(groups).sort(([a], [b]) => {
-      const ia = stageOrder.indexOf(a); const ib = stageOrder.indexOf(b)
-      return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib)
+
+    const byDir = {}
+    filtered.forEach(o => {
+      const dir = o.direction || 'other'
+      if (!byDir[dir]) byDir[dir] = {}
+      const t = getT(o.id)
+      const stageLbl = t ? getStageLabel(o.service_type, t.current_stage) : 'No tracking'
+      if (!byDir[dir][stageLbl]) byDir[dir][stageLbl] = []
+      byDir[dir][stageLbl].push(o)
     })
+
+    // Flatten: [{dirKey, dirLabel, stageLabel, orders}]
+    const result = []
+    DIR_ORDER.filter(d => byDir[d]).forEach(dir => {
+      const dirLabel = DIR_LABEL[dir] || 'Other'
+      const stages = Object.entries(byDir[dir])
+        .sort(([a], [b]) => {
+          const ia = stageOrder.indexOf(a); const ib = stageOrder.indexOf(b)
+          return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib)
+        })
+      stages.forEach(([stageLbl, orders]) => {
+        result.push({ dir, dirLabel, stageLbl, orders })
+      })
+    })
+    return result
   }, [filtered, tracking])
 
   // Count per stage for filter chips
@@ -211,34 +226,54 @@ export default function OrdersTab({ orders, tracking, costs = [], addOrder, upda
         </div>
       ) : (
         <div style={{display:'flex', flexDirection:'column', gap:12}}>
-          {grouped.map(([groupLabel, groupOrders]) => (
-            <div className="card" key={groupLabel}>
-              {/* Group header */}
-              <div style={{
-                padding:'8px 16px', background:'var(--gray-50)',
-                borderBottom:'1px solid var(--gray-100)',
-                fontSize:11, fontWeight:700, color:'var(--gray-400)',
-                textTransform:'uppercase', letterSpacing:'0.08em',
-                display:'flex', alignItems:'center', justifyContent:'space-between',
-              }}>
-                <span>🚚 {groupLabel}</span>
-                <span style={{fontWeight:500}}>{groupOrders.length} order{groupOrders.length !== 1 ? 's' : ''}</span>
+          {grouped.map(({ dir, dirLabel, stageLbl, orders: groupOrders }, idx) => {
+            // Show direction header only when it changes
+            const prevDir = idx > 0 ? grouped[idx-1].dir : null
+            const showDirHeader = dir !== prevDir
+            return (
+              <div key={`${dir}-${stageLbl}`}>
+                {/* Direction header — bold, prominent */}
+                {showDirHeader && (
+                  <div style={{
+                    padding:'10px 16px',
+                    background:'var(--navy)', color:'var(--gold)',
+                    borderRadius:'var(--r-lg) var(--r-lg) 0 0',
+                    fontFamily:'var(--font-brand)', fontWeight:800, fontSize:14,
+                    letterSpacing:'0.02em',
+                    marginTop: idx > 0 ? 8 : 0,
+                  }}>
+                    {dirLabel}
+                  </div>
+                )}
+                <div className="card" style={{borderRadius: showDirHeader ? '0 0 var(--r-lg) var(--r-lg)' : 'var(--r-lg)', marginTop:0}}>
+                  {/* Stage sub-header */}
+                  <div style={{
+                    padding:'6px 16px', background:'var(--gray-50)',
+                    borderBottom:'1px solid var(--gray-100)',
+                    fontSize:11, fontWeight:700, color:'var(--gray-400)',
+                    textTransform:'uppercase', letterSpacing:'0.08em',
+                    display:'flex', justifyContent:'space-between',
+                  }}>
+                    <span>🚚 {stageLbl}</span>
+                    <span style={{fontWeight:500}}>{groupOrders.length} order{groupOrders.length !== 1 ? 's' : ''}</span>
+                  </div>
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Order</th><th>Customer / Goods</th><th>Charged kg</th><th>Stage</th><th>Revenue</th>
+                          <th title="Tracking · Invoice · Cost">Status</th><th></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {groupOrders.map(o => <OrderRow key={o.id} o={o} />)}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               </div>
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Order</th><th>Customer / Goods</th><th>Charged kg</th><th>Stage</th><th>Revenue</th>
-                      <th title="Tracking · Invoice · Cost">Status</th><th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {groupOrders.map(o => <OrderRow key={o.id} o={o} />)}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
