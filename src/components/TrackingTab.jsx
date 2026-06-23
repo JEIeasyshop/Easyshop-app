@@ -210,9 +210,31 @@ export default function TrackingTab({ orders, tracking, carriers, costs = [], up
             <p>{search || stageFilter !== 'All' ? 'Try clearing filters.' : 'Orders will appear here once created.'}</p>
           </div>
         </div>
-      ) : (
-        <div style={{display:'flex', flexDirection:'column', gap:12}}>
-          {filtered.map(order => {
+      ) : (() => {
+        const DIR_ORDER = ['us_jkt', 'jkt_us', 'other']
+        const DIR_LABEL_MAP = { us_jkt:'US → JKT', jkt_us:'JKT → US', other:'Other' }
+        const byDir = {}
+        filtered.forEach(o => {
+          const dir = o.direction || 'other'
+          if (!byDir[dir]) byDir[dir] = []
+          byDir[dir].push(o)
+        })
+        return (
+        <div style={{display:'flex', flexDirection:'column', gap:4}}>
+          {DIR_ORDER.filter(d => byDir[d]).map((dir, dIdx) => (
+            <div key={dir}>
+              {/* Bold direction header */}
+              <div style={{
+                padding:'10px 16px',
+                background:'var(--navy)', color:'var(--gold)',
+                borderRadius:'var(--r-lg) var(--r-lg) 0 0',
+                fontFamily:'var(--font-brand)', fontWeight:800, fontSize:14,
+                marginTop: dIdx > 0 ? 12 : 0,
+              }}>
+                {DIR_LABEL_MAP[dir]}
+              </div>
+              <div style={{display:'flex', flexDirection:'column', gap:0}}>
+          {byDir[dir].map(order => {
             const t      = getT(order.id)
             if (!t) return null
             const seq    = getStageSequence(order.service_type)
@@ -312,9 +334,12 @@ export default function TrackingTab({ orders, tracking, carriers, costs = [], up
               </div>
             )
           })}
+              </div>
+            </div>
+          ))}
         </div>
-      )}
-
+        )
+      })()}
       {/* Confirm delete */}
       {confirmDel && (
         <div className="overlay">

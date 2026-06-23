@@ -3,13 +3,17 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from './supabaseClient'
 
 // ── Stage definitions ────────────────────────────────────
+// Both service types now share the same 7 stages:
+// 1 Ordered → 2 Packed → 3 Arrived at warehouse → 4 Sent to destination
+// → 5 Received at destination → 6 Sent to customer → 7 Received by customer
 export const STAGE_LABELS = {
   1: 'Ordered',
-  2: 'Arrived at warehouse',
-  3: 'Sent to destination',
-  4: 'Received at destination',
-  5: 'Sent to customer',
-  6: 'Received by customer',
+  2: 'Packed',
+  3: 'Arrived at warehouse',
+  4: 'Sent to destination',
+  5: 'Received at destination',
+  6: 'Sent to customer',
+  7: 'Received by customer',
 }
 
 export function getStageLabel(serviceType, stage) {
@@ -17,7 +21,13 @@ export function getStageLabel(serviceType, stage) {
 }
 
 export function getStageSequence(serviceType) {
-  return serviceType === 'full_service' ? [1, 2, 3, 4, 5, 6] : [2, 3, 4, 5, 6]
+  // Both full_service and shipping_only now use all 7 stages
+  return [1, 2, 3, 4, 5, 6, 7]
+}
+
+// New orders start at stage 1 for both service types
+export function getStartStage(serviceType) {
+  return 1
 }
 
 export function isFinalStage(order, trackingRow) {
@@ -92,8 +102,8 @@ export function useAppData() {
     const { data, error } = await supabase.from('orders').insert(orderData).select().single()
     if (error) throw error
 
-    // Auto-create tracking row — start stage depends on service type
-    const startStage = orderData.service_type === 'full_service' ? 1 : 2
+    // Auto-create tracking row — both service types start at stage 1 (Ordered)
+    const startStage = 1
     const { error: te } = await supabase.from('tracking_status').insert({
       order_id:      data.id,
       current_stage: startStage,
