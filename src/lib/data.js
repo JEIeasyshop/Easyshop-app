@@ -4,12 +4,12 @@ import { supabase } from './supabaseClient'
 
 // ── Stage definitions ────────────────────────────────────
 // Both service types now share the same 7 stages:
-// 1 Ordered → 2 Packed → 3 Arrived at warehouse → 4 Sent to destination
+// 1 Ordered → 2 Arrived at warehouse → 3 Packed → 4 Sent to destination
 // → 5 Received at destination → 6 Sent to customer → 7 Received by customer
 export const STAGE_LABELS = {
   1: 'Ordered',
-  2: 'Packed',
-  3: 'Arrived at warehouse',
+  2: 'Arrived at warehouse',
+  3: 'Packed',
   4: 'Sent to destination',
   5: 'Received at destination',
   6: 'Sent to customer',
