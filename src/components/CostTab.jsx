@@ -225,63 +225,238 @@ export default function CostTab({ costs, addCostLine, removeCostLine, updateCost
             const trkDone   = rec.tracking_done || false
 
             return (
-              <div key={rec.id}
-                className={`inv-row ${isSel ? 'inv-row-active' : ''}`}
-                onClick={() => {
-                  setSelectedId(prev => prev === rec.id ? null : rec.id)
-                  setUsdRate(rec.usd_rate?.toString() || '')
-                }}>
-                {/* Left — grid layout */}
-                <div style={{display:'grid', gridTemplateColumns:'auto auto 1fr', alignItems:'center', gap:10, overflow:'hidden', minWidth:0}}>
-                  {/* Cost done circle */}
-                  <div onClick={async e => { e.stopPropagation(); await setDoneFlag(rec.id, 'cost_done', !costDone) }}
-                    style={{
-                      width:20, height:20, borderRadius:'50%', flexShrink:0, cursor:'pointer',
-                      border:`2px solid ${costDone ? 'var(--green)' : 'var(--gray-200)'}`,
-                      background: costDone ? 'var(--green)' : 'transparent',
-                      display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.15s',
-                    }}>
-                    {costDone && <Check size={11} color="white" strokeWidth={3} />}
-                  </div>
-                  <span className="text-mono text-sm fw-700" style={{color:'var(--navy)', whiteSpace:'nowrap'}}>
-                    ORD-{(rec.original_order_id||'').substring(0,6).toUpperCase()}
-                  </span>
-                  <span style={{overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
-                    <span style={{fontWeight:700}}>{o.customer_name||'—'}</span>
-                    <span className="text-muted" style={{fontWeight:400, marginLeft:8, fontSize:13}}>
-                      {DIR_LABEL[o.direction] || o.direction_other_note || 'Other'}
-                      {o.goods_description ? ` · ${o.goods_description}` : ''}
+              <div key={rec.id}>
+                {/* ── Cost row ── */}
+                <div
+                  className={`inv-row ${isSel ? 'inv-row-active' : ''}`}
+                  onClick={() => {
+                    setSelectedId(prev => prev === rec.id ? null : rec.id)
+                    setUsdRate(rec.usd_rate?.toString() || '')
+                  }}>
+                  {/* Left — grid layout */}
+                  <div style={{display:'grid', gridTemplateColumns:'auto auto 1fr', alignItems:'center', gap:10, overflow:'hidden', minWidth:0}}>
+                    {/* Cost done circle */}
+                    <div onClick={async e => { e.stopPropagation(); await setDoneFlag(rec.id, 'cost_done', !costDone) }}
+                      style={{
+                        width:20, height:20, borderRadius:'50%', flexShrink:0, cursor:'pointer',
+                        border:`2px solid ${costDone ? 'var(--green)' : 'var(--gray-200)'}`,
+                        background: costDone ? 'var(--green)' : 'transparent',
+                        display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.15s',
+                      }}>
+                      {costDone && <Check size={11} color="white" strokeWidth={3} />}
+                    </div>
+                    <span className="text-mono text-sm fw-700" style={{color:'var(--navy)', whiteSpace:'nowrap'}}>
+                      ORD-{(rec.original_order_id||'').substring(0,6).toUpperCase()}
                     </span>
-                  </span>
+                    <span style={{overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
+                      <span style={{fontWeight:700}}>{o.customer_name||'—'}</span>
+                      <span className="text-muted" style={{fontWeight:400, marginLeft:8, fontSize:13}}>
+                        {DIR_LABEL[o.direction] || o.direction_other_note || 'Other'}
+                        {o.goods_description ? ` · ${o.goods_description}` : ''}
+                      </span>
+                    </span>
+                  </div>
+
+                  {/* Right — financials + 3 status dots far right + delete */}
+                  <div className="flex-center gap-12" style={{flexShrink:0, marginLeft:12}}>
+                    <div style={{textAlign:'right'}}>
+                      <div className="text-sm text-muted">Revenue</div>
+                      <div style={{fontWeight:700, color:'var(--navy)', whiteSpace:'nowrap'}}>Rp {Math.round(revIDR).toLocaleString('id-ID')}</div>
+                    </div>
+                    <div style={{textAlign:'right'}}>
+                      <div className="text-sm text-muted">Cost</div>
+                      <div style={{fontWeight:700, color:'var(--red)', whiteSpace:'nowrap'}}>Rp {Math.round(costIDR).toLocaleString('id-ID')}</div>
+                    </div>
+                    <div style={{textAlign:'right'}}>
+                      <div className="text-sm text-muted">Profit</div>
+                      <div style={{fontWeight:700, whiteSpace:'nowrap', color: profitIDR >= 0 ? 'var(--green)' : 'var(--red)'}}>
+                        Rp {Math.round(profitIDR).toLocaleString('id-ID')}
+                      </div>
+                    </div>
+                    <div className="flex-center gap-4" title="Shipment · Invoice · Cost">
+                      <div style={{width:8, height:8, borderRadius:'50%', background: trkDone ? 'var(--green)' : 'var(--gray-200)'}} />
+                      <div style={{width:8, height:8, borderRadius:'50%', background: invDone ? 'var(--green)' : 'var(--gray-200)'}} />
+                      <div style={{width:8, height:8, borderRadius:'50%', background: costDone ? 'var(--green)' : 'var(--gray-200)'}} />
+                    </div>
+                    <button className="btn-ghost btn-sm" title="Delete order" style={{color:'var(--red)'}}
+                      onClick={e => { e.stopPropagation(); setConfirmDel(rec.original_order_id) }}>
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </div>
 
-                {/* Right — financials + 3 status dots far right + delete */}
-                <div className="flex-center gap-12" style={{flexShrink:0, marginLeft:12}}>
-                  <div style={{textAlign:'right'}}>
-                    <div className="text-sm text-muted">Revenue</div>
-                    <div style={{fontWeight:700, color:'var(--navy)', whiteSpace:'nowrap'}}>Rp {Math.round(revIDR).toLocaleString('id-ID')}</div>
-                  </div>
-                  <div style={{textAlign:'right'}}>
-                    <div className="text-sm text-muted">Cost</div>
-                    <div style={{fontWeight:700, color:'var(--red)', whiteSpace:'nowrap'}}>Rp {Math.round(costIDR).toLocaleString('id-ID')}</div>
-                  </div>
-                  <div style={{textAlign:'right'}}>
-                    <div className="text-sm text-muted">Profit</div>
-                    <div style={{fontWeight:700, whiteSpace:'nowrap', color: profitIDR >= 0 ? 'var(--green)' : 'var(--red)'}}>
-                      Rp {Math.round(profitIDR).toLocaleString('id-ID')}
+                {/* ── Inline expanded cost panel — directly below this row ── */}
+                {isSel && (() => {
+                  const lines2     = rec.cost_lines || []
+                  const fx2        = parseFloat(usdRate) || parseFloat(rec.usd_rate) || DEFAULT_FX
+                  const revIDR2    = getRevIDR(rec)
+                  const costIDR2   = getCostIDR(rec, fx2)
+                  const profitIDR2 = revIDR2 - costIDR2
+                  const margin2    = revIDR2 > 0 ? Math.round((profitIDR2 / revIDR2) * 100) : 0
+                  const invDone2   = rec.invoice_done || false
+                  const costDone2  = rec.cost_done    || false
+
+                  return (
+                    <div className="inv-doc" style={{margin:'0 0 4px 0', borderTop:'2px solid var(--gold)', borderRadius:'0 0 var(--r-lg) var(--r-lg)'}}>
+                      {/* Header */}
+                      <div className="inv-doc-header" style={{marginBottom:16}}>
+                        <div>
+                          <div style={{fontFamily:'var(--font-brand)', fontWeight:800, fontSize:16, color:'var(--navy)'}}>
+                            {o.customer_name} — Cost Sheet
+                          </div>
+                          <div className="text-sm text-muted" style={{marginTop:3}}>
+                            {DIR_LABEL[o.direction] || o.direction_other_note || 'Other'}
+                            {o.goods_description ? ` · ${o.goods_description}` : ''}
+                          </div>
+                        </div>
+                      </div>
+
+                      <hr />
+
+                      {/* KPI row */}
+                      <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:20}}>
+                        {[
+                          { label:'Revenue',    val:`Rp ${Math.round(revIDR2).toLocaleString('id-ID')}`,    color:'var(--navy)' },
+                          { label:'Total Cost', val:`Rp ${Math.round(costIDR2).toLocaleString('id-ID')}`,   color:'var(--red)'  },
+                          { label:'Profit',     val:`Rp ${Math.round(profitIDR2).toLocaleString('id-ID')}`, color: profitIDR2 >= 0 ? 'var(--green)' : 'var(--red)' },
+                          { label:'Margin',     val:`${margin2}%`,                                           color: margin2 >= 0 ? 'var(--green)' : 'var(--red)'  },
+                        ].map(s => (
+                          <div key={s.label} style={{background:'var(--gray-50)', borderRadius:'var(--r-md)', padding:'14px 16px', textAlign:'center'}}>
+                            <div className="text-sm text-muted" style={{marginBottom:4}}>{s.label}</div>
+                            <div style={{fontFamily:'var(--font-brand)', fontWeight:800, fontSize:15, color:s.color}}>{s.val}</div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Cost lines */}
+                      <div style={{marginBottom:16}}>
+                        <div className="inv-section-label" style={{marginBottom:8}}>COST LINES</div>
+                        {lines2.length === 0 ? (
+                          <p className="text-sm text-muted">No cost lines yet. Add below.</p>
+                        ) : (
+                          <table style={{width:'100%', borderCollapse:'collapse'}}>
+                            <thead>
+                              <tr>
+                                {['Description','Qty','Unit Cost','Total','In IDR',''].map((h, i) => (
+                                  <th key={i} style={{textAlign:i===0?'left':'right', padding:'6px 0', fontSize:11, color:'var(--gray-400)', textTransform:'uppercase', letterSpacing:'0.07em', borderBottom:'1px solid var(--gray-200)', width:h===''?32:undefined}}>{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {lines2.map((l, i) => {
+                                const sub    = Number(l.amount) * (Number(l.qty)||1)
+                                const subIDR = toIDR(sub, l.currency||'USD', fx2)
+                                return (
+                                  <tr key={i}>
+                                    <td style={{padding:'8px 0', fontSize:13, borderBottom:'1px solid var(--gray-100)'}}>{l.description}</td>
+                                    <td style={{textAlign:'right', padding:'8px 0', fontSize:13, color:'var(--gray-400)', borderBottom:'1px solid var(--gray-100)'}}>{l.qty||1}</td>
+                                    <td style={{textAlign:'right', padding:'8px 0', fontSize:13, borderBottom:'1px solid var(--gray-100)'}}>{formatCurrency(l.amount, l.currency||'USD')}</td>
+                                    <td style={{textAlign:'right', padding:'8px 0', fontSize:13, fontWeight:600, borderBottom:'1px solid var(--gray-100)'}}>{formatCurrency(sub, l.currency||'USD')}</td>
+                                    <td style={{textAlign:'right', padding:'8px 0', fontSize:13, color:'var(--red)', borderBottom:'1px solid var(--gray-100)'}}>Rp {Math.round(subIDR).toLocaleString('id-ID')}</td>
+                                    <td style={{textAlign:'right', padding:'8px 0', borderBottom:'1px solid var(--gray-100)'}}>
+                                      <button className="btn-ghost" style={{color:'var(--red)', padding:'2px 4px'}} onClick={() => removeCostLine(rec.id, i)}>
+                                        <Trash2 size={13} />
+                                      </button>
+                                    </td>
+                                  </tr>
+                                )
+                              })}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
+
+                      {/* Add cost line */}
+                      <div className="inv-add-cost">
+                        <div className="inv-section-label" style={{marginBottom:10}}>ADD COST LINE</div>
+                        <div style={{display:'grid', gridTemplateColumns:'1fr auto auto auto auto', gap:8, alignItems:'end'}}>
+                          <input className="form-input" type="text"
+                            placeholder="e.g. Shipping cost, Repackage fee"
+                            value={lineDesc} onChange={e => setLineDesc(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && handleAddLine()} />
+                          <div>
+                            <div className="form-label" style={{marginBottom:4}}>Qty</div>
+                            <input className="form-input" style={{width:64}} type="number" min="1"
+                              value={lineQty} onChange={e => setLineQty(e.target.value)} />
+                          </div>
+                          <div>
+                            <div className="form-label" style={{marginBottom:4}}>Unit cost</div>
+                            <input className="form-input" style={{width:110}} type="number" min="0" step="0.01"
+                              placeholder="0.00" value={lineAmt} onChange={e => setLineAmt(e.target.value)}
+                              onKeyDown={e => e.key === 'Enter' && handleAddLine()} />
+                          </div>
+                          <div>
+                            <div className="form-label" style={{marginBottom:4}}>Currency</div>
+                            <select className="form-select" style={{width:80}} value={lineCur} onChange={e => setLineCur(e.target.value)}>
+                              <option>USD</option><option>IDR</option>
+                            </select>
+                          </div>
+                          <button className="btn btn-danger" disabled={savingLine} onClick={handleAddLine} style={{alignSelf:'end'}}>
+                            <Plus size={13} /> {savingLine ? '…' : 'Add cost'}
+                          </button>
+                        </div>
+                        {lineAmt && parseInt(lineQty) > 1 && (
+                          <div className="text-sm text-muted" style={{marginTop:6}}>
+                            = {lineQty} × {formatCurrency(parseFloat(lineAmt)||0, lineCur)} = <strong>{formatCurrency((parseFloat(lineAmt)||0)*(parseInt(lineQty)||1), lineCur)}</strong>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* FX rate */}
+                      <div className="inv-fx-box">
+                        <div className="inv-section-label">USD → IDR RATE</div>
+                        <div style={{display:'grid', gridTemplateColumns:'1fr auto', gap:8, marginTop:8, alignItems:'end'}}>
+                          <input className="form-input" type="number" placeholder={DEFAULT_FX}
+                            value={usdRate} onChange={e => setUsdRate(e.target.value)} />
+                          <button className="btn btn-primary btn-sm" disabled={savingRate} onClick={handleSaveRate} style={{alignSelf:'end'}}>
+                            {savingRate ? 'Saving…' : 'Save rate'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Status + action */}
+                      <div style={{marginTop:16, padding:'16px 20px', background:'var(--gray-50)', borderRadius:'var(--r-md)', border:'1px solid var(--gray-200)'}}>
+                        <div className="flex-center gap-20" style={{marginBottom:16}}>
+                          {[
+                            { done: rec.tracking_done, label: 'Shipment delivered' },
+                            { done: invDone2,           label: 'Invoice paid' },
+                            { done: costDone2,          label: 'Cost completed' },
+                          ].map((c, i) => (
+                            <div key={i} className="flex-center gap-8">
+                              <div style={{width:22, height:22, borderRadius:'50%', flexShrink:0, border:`2px solid ${c.done ? 'var(--green)' : 'var(--gray-300)'}`, background: c.done ? 'var(--green)' : 'transparent', display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.2s'}}>
+                                {c.done && <Check size={12} color="white" strokeWidth={3} />}
+                              </div>
+                              <span style={{fontSize:13, fontWeight: c.done ? 700 : 400, color: c.done ? 'var(--green)' : 'var(--gray-400)'}}>{c.label}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <button
+                          disabled={togglingCost}
+                          onClick={async () => {
+                            setTogglingCost(true)
+                            try {
+                              if (!costDone2) {
+                                await setDoneFlag(rec.id, 'cost_done', true)
+                              } else if (rec.tracking_done && invDone2 && costDone2) {
+                                await manualArchive(rec.id)
+                              } else {
+                                await setDoneFlag(rec.id, 'cost_done', false)
+                              }
+                            } finally { setTogglingCost(false) }
+                          }}
+                          style={{
+                            width:'100%', padding:'10px 20px', borderRadius:'var(--r-md)',
+                            border:'none', cursor: togglingCost ? 'wait' : 'pointer', fontSize:14, fontWeight:700,
+                            background: costDone2 ? (rec.tracking_done && invDone2 ? 'var(--green)' : 'var(--gray-200)') : 'var(--navy)',
+                            color: costDone2 ? (rec.tracking_done && invDone2 ? 'white' : 'var(--gray-600)') : 'white',
+                            transition:'all 0.2s',
+                          }}>
+                          {togglingCost ? '…' : costDone2 ? (rec.tracking_done && invDone2 ? '🎉 Archive Now' : '✓ Cost Done — click to undo') : 'Mark Cost as Done'}
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                  {/* 3 status dots — tracking · invoice · cost — far right, consistent */}
-                  <div className="flex-center gap-4" title="Shipment · Invoice · Cost">
-                    <div style={{width:8, height:8, borderRadius:'50%', background: trkDone ? 'var(--green)' : 'var(--gray-200)'}} />
-                    <div style={{width:8, height:8, borderRadius:'50%', background: invDone ? 'var(--green)' : 'var(--gray-200)'}} />
-                    <div style={{width:8, height:8, borderRadius:'50%', background: costDone ? 'var(--green)' : 'var(--gray-200)'}} />
-                  </div>
-                  <button className="btn-ghost btn-sm" title="Delete order" style={{color:'var(--red)'}}
-                    onClick={e => { e.stopPropagation(); setConfirmDel(rec.original_order_id) }}>
-                    <Trash2 size={14} />
-                  </button>
-                </div>
+                  )
+                })()}
               </div>
             )
           })}
@@ -290,225 +465,6 @@ export default function CostTab({ costs, addCostLine, removeCostLine, updateCost
           })}
         </div>
 
-        {/* Expanded cost panel */}
-        {selected && (() => {
-          const o         = selected.order_snapshot  || {}
-          const lines     = selected.cost_lines      || []
-          const fx        = parseFloat(usdRate) || parseFloat(selected.usd_rate) || DEFAULT_FX
-          const revIDR    = getRevIDR(selected)
-          const costIDR   = getCostIDR(selected, fx)
-          const profitIDR = revIDR - costIDR
-          const margin    = revIDR > 0 ? Math.round((profitIDR / revIDR) * 100) : 0
-          const invDone   = selected.invoice_done || false
-          const costDone  = selected.cost_done    || false
-
-          return (
-            <div className="inv-doc">
-              {/* Header */}
-              <div className="inv-doc-header" style={{marginBottom:16}}>
-                <div>
-                  <div style={{fontFamily:'var(--font-brand)', fontWeight:800, fontSize:16, color:'var(--navy)'}}>
-                    {o.customer_name} — Cost Sheet
-                  </div>
-                  <div className="text-sm text-muted" style={{marginTop:3}}>
-                    {DIR_LABEL[o.direction] || o.direction_other_note || 'Other'}
-                    {o.goods_description ? ` · ${o.goods_description}` : ''}
-                  </div>
-                </div>
-              </div>
-
-              <hr />
-
-              {/* KPI row */}
-              <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:20}}>
-                {[
-                  { label:'Revenue',    val:`Rp ${Math.round(revIDR).toLocaleString('id-ID')}`,    color:'var(--navy)' },
-                  { label:'Total Cost', val:`Rp ${Math.round(costIDR).toLocaleString('id-ID')}`,   color:'var(--red)'  },
-                  { label:'Profit',     val:`Rp ${Math.round(profitIDR).toLocaleString('id-ID')}`, color: profitIDR >= 0 ? 'var(--green)' : 'var(--red)' },
-                  { label:'Margin',     val:`${margin}%`,                                           color: margin >= 0  ? 'var(--green)' : 'var(--red)'  },
-                ].map(s => (
-                  <div key={s.label} style={{background:'var(--gray-50)', borderRadius:'var(--r-md)', padding:'14px 16px', textAlign:'center'}}>
-                    <div className="text-sm text-muted" style={{marginBottom:4}}>{s.label}</div>
-                    <div style={{fontFamily:'var(--font-brand)', fontWeight:800, fontSize:15, color:s.color}}>{s.val}</div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Cost lines */}
-              <div style={{marginBottom:16}}>
-                <div className="inv-section-label" style={{marginBottom:8}}>COST LINES</div>
-                {lines.length === 0 ? (
-                  <p className="text-sm text-muted">No cost lines yet. Add below.</p>
-                ) : (
-                  <table style={{width:'100%', borderCollapse:'collapse'}}>
-                    <thead>
-                      <tr>
-                        {['Description','Qty','Unit Cost','Total','In IDR',''].map((h, i) => (
-                          <th key={i} style={{textAlign:i===0?'left':'right', padding:'6px 0', fontSize:11, color:'var(--gray-400)', textTransform:'uppercase', letterSpacing:'0.07em', borderBottom:'1px solid var(--gray-200)', width:h===''?32:undefined}}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {lines.map((l, i) => {
-                        const sub    = Number(l.amount) * (Number(l.qty)||1)
-                        const subIDR = toIDR(sub, l.currency||'USD', fx)
-                        return (
-                          <tr key={i}>
-                            <td style={{padding:'8px 0', fontSize:13, borderBottom:'1px solid var(--gray-100)'}}>{l.description}</td>
-                            <td style={{textAlign:'right', padding:'8px 0', fontSize:13, color:'var(--gray-400)', borderBottom:'1px solid var(--gray-100)'}}>{l.qty||1}</td>
-                            <td style={{textAlign:'right', padding:'8px 0', fontSize:13, borderBottom:'1px solid var(--gray-100)'}}>{formatCurrency(l.amount, l.currency||'USD')}</td>
-                            <td style={{textAlign:'right', padding:'8px 0', fontSize:13, fontWeight:600, borderBottom:'1px solid var(--gray-100)'}}>{formatCurrency(sub, l.currency||'USD')}</td>
-                            <td style={{textAlign:'right', padding:'8px 0', fontSize:13, color:'var(--red)', borderBottom:'1px solid var(--gray-100)'}}>Rp {Math.round(subIDR).toLocaleString('id-ID')}</td>
-                            <td style={{textAlign:'right', padding:'8px 0', borderBottom:'1px solid var(--gray-100)'}}>
-                              <button className="btn-ghost" style={{color:'var(--red)', padding:'2px 4px'}} onClick={() => removeCostLine(selected.id, i)}>
-                                <Trash2 size={13} />
-                              </button>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-
-              {/* Add cost line — aligned grid */}
-              <div className="inv-add-cost">
-                <div className="inv-section-label" style={{marginBottom:10}}>ADD COST LINE</div>
-                <div style={{display:'grid', gridTemplateColumns:'1fr auto auto auto auto', gap:8, alignItems:'end'}}>
-                  <input className="form-input" type="text"
-                    placeholder="e.g. Shipping cost, Repackage fee"
-                    value={lineDesc} onChange={e => setLineDesc(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && handleAddLine()} />
-                  <div>
-                    <div className="form-label" style={{marginBottom:4}}>Qty</div>
-                    <input className="form-input" style={{width:64}} type="number" min="1"
-                      value={lineQty} onChange={e => setLineQty(e.target.value)} />
-                  </div>
-                  <div>
-                    <div className="form-label" style={{marginBottom:4}}>Unit cost</div>
-                    <input className="form-input" style={{width:110}} type="number" min="0" step="0.01"
-                      placeholder="0.00" value={lineAmt} onChange={e => setLineAmt(e.target.value)}
-                      onKeyDown={e => e.key === 'Enter' && handleAddLine()} />
-                  </div>
-                  <div>
-                    <div className="form-label" style={{marginBottom:4}}>Currency</div>
-                    <select className="form-select" style={{width:80}} value={lineCur} onChange={e => setLineCur(e.target.value)}>
-                      <option>USD</option><option>IDR</option>
-                    </select>
-                  </div>
-                  <button className="btn btn-danger" disabled={savingLine} onClick={handleAddLine} style={{alignSelf:'end'}}>
-                    <Plus size={13} /> {savingLine ? '…' : 'Add cost'}
-                  </button>
-                </div>
-                {lineAmt && parseInt(lineQty) > 1 && (
-                  <div className="text-sm text-muted" style={{marginTop:6}}>
-                    = {lineQty} × {formatCurrency(parseFloat(lineAmt)||0, lineCur)} = <strong>{formatCurrency((parseFloat(lineAmt)||0)*(parseInt(lineQty)||1), lineCur)}</strong>
-                  </div>
-                )}
-              </div>
-
-              {/* FX rate — aligned grid */}
-              <div className="inv-fx-box">
-                <div className="inv-section-label">USD → IDR RATE</div>
-                <div style={{display:'grid', gridTemplateColumns:'1fr auto', gap:8, marginTop:8, alignItems:'end'}}>
-                  <input className="form-input" type="number" placeholder={DEFAULT_FX}
-                    value={usdRate} onChange={e => setUsdRate(e.target.value)} />
-                  <button className="btn btn-primary btn-sm" disabled={savingRate} onClick={handleSaveRate} style={{alignSelf:'end'}}>
-                    {savingRate ? 'Saving…' : 'Save rate'}
-                  </button>
-                </div>
-              </div>
-
-
-              {/* Status bar — 3 criteria + single Complete Order button */}
-              <div style={{
-                marginTop:16, padding:'16px 20px',
-                background:'var(--gray-50)', borderRadius:'var(--r-md)',
-                border:'1px solid var(--gray-200)',
-              }}>
-                {/* 3 criteria checklist */}
-                <div className="flex-center gap-20" style={{marginBottom:16}}>
-                  {[
-                    { done: selected.tracking_done, label: 'Shipment delivered' },
-                    { done: invDone,                label: 'Invoice paid' },
-                    { done: costDone,               label: 'Cost completed' },
-                  ].map((c, i) => (
-                    <div key={i} className="flex-center gap-8">
-                      <div style={{
-                        width:22, height:22, borderRadius:'50%', flexShrink:0,
-                        border:`2px solid ${c.done ? 'var(--green)' : 'var(--gray-300)'}`,
-                        background: c.done ? 'var(--green)' : 'transparent',
-                        display:'flex', alignItems:'center', justifyContent:'center',
-                        transition:'all 0.2s',
-                      }}>
-                        {c.done && <Check size={12} color="white" strokeWidth={3} />}
-                      </div>
-                      <span style={{
-                        fontSize:13, fontWeight: c.done ? 700 : 400,
-                        color: c.done ? 'var(--green)' : 'var(--gray-400)',
-                      }}>{c.label}</span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Single action button */}
-                <button
-                  disabled={togglingCost}
-                  onClick={async () => {
-                    setTogglingCost(true)
-                    try {
-                      if (!costDone) {
-                        // Mark cost done — setDoneFlag will auto-archive if all 3 met
-                        await setDoneFlag(selected.id, 'cost_done', true)
-                      } else if (selected.tracking_done && invDone && costDone) {
-                        // All already done but not archived — force archive
-                        await manualArchive(selected.id)
-                      } else {
-                        // Unmark cost done
-                        await setDoneFlag(selected.id, 'cost_done', false)
-                      }
-                    } finally { setTogglingCost(false) }
-                  }}
-                  style={{
-                    width:'100%', padding:'12px 20px',
-                    display:'flex', alignItems:'center', justifyContent:'center', gap:10,
-                    background: (selected.tracking_done && invDone && costDone)
-                      ? 'var(--green)'
-                      : costDone
-                        ? 'var(--green)'
-                        : 'var(--navy)',
-                    border:'none', borderRadius:'var(--r-md)',
-                    cursor: togglingCost ? 'not-allowed' : 'pointer',
-                    transition:'all 0.2s',
-                    fontFamily:'var(--font-brand)',
-                    fontWeight:700, fontSize:14,
-                    color:'white', opacity: togglingCost ? 0.7 : 1,
-                  }}>
-                  <CheckCircle size={16} />
-                  {togglingCost
-                    ? 'Processing…'
-                    : (selected.tracking_done && invDone && costDone)
-                      ? '✓ Complete — Move to Completed Tab'
-                      : costDone
-                        ? 'Cost marked ✓ — waiting for shipment & invoice'
-                        : 'Mark Cost as Completed'
-                  }
-                </button>
-
-                {(!selected.tracking_done || !invDone) && (
-                  <div className="text-sm text-muted" style={{marginTop:8, textAlign:'center'}}>
-                    {!selected.tracking_done && !invDone
-                      ? 'Waiting for shipment delivery and invoice payment'
-                      : !selected.tracking_done
-                        ? 'Waiting for shipment to be delivered'
-                        : 'Waiting for invoice to be marked as paid'}
-                  </div>
-                )}
-              </div>
-            </div>
-          )
-        })()}
       </>)}
 
       {/* Confirm delete */}

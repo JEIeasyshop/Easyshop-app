@@ -28,6 +28,7 @@ const emptyForm = {
   goods_link:           '',            // product/order link
   order_tracking_link:  '',            // shipment tracking link
   eta_date:             '',            // estimated arrival date
+  number_of_packages:   '',            // how many packages
   weight_unit:          'kg',
   weight_kg:            '',
   weight_lb:            '',
@@ -60,6 +61,7 @@ export default function OrderForm({ onSubmit, onClose, customers = [], addCustom
     eta_date:         initialData.eta_date || '',
     goods_link:       initialData.goods_link || '',
     order_tracking_link: initialData.order_tracking_link || '',
+    number_of_packages: initialData.number_of_packages ?? '',
   } : emptyForm)
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState('')
@@ -162,6 +164,7 @@ export default function OrderForm({ onSubmit, onClose, customers = [], addCustom
         p[k] = toNum(form[k])
       })
       p.qty                    = toInt(form.qty) || 1
+      p.number_of_packages     = toInt(form.number_of_packages) || null
       p.rate_per_kg            = toNum(form.rate_per_kg)
       p.full_service_price     = toNum(form.full_service_price)
       p.eta_date               = form.eta_date || null
@@ -343,6 +346,15 @@ export default function OrderForm({ onSubmit, onClose, customers = [], addCustom
                 placeholder="Describe the items being shipped…"
                 value={form.goods_description}
                 onChange={e => set('goods_description', e.target.value)} />
+            </div>
+
+            {/* Number of packages */}
+            <div className="form-group">
+              <label className="form-label">Number of Packages</label>
+              <input className="form-input" type="number" min="1" step="1"
+                placeholder="e.g. 3"
+                value={form.number_of_packages}
+                onChange={e => set('number_of_packages', e.target.value)} />
             </div>
 
             {/* Product / order link (full service only) */}

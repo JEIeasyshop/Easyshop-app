@@ -291,7 +291,7 @@ export default function InvoiceTab({
                 {/* ── Row — fixed 2-line layout ── */}
                 <div
                   className={`inv-row ${isSel ? 'inv-row-active' : ''}`}
-                  style={{display:'grid', gridTemplateColumns:'24px minmax(0,1fr) 220px 110px 100px 80px 60px', alignItems:'center', gap:10, padding:'10px 16px', cursor:'pointer'}}
+                  style={{display:'grid', gridTemplateColumns:'24px minmax(0,1fr) 200px 160px 110px 28px 30px', alignItems:'center', gap:8, padding:'10px 16px', cursor:'pointer'}}
                   onClick={() => selectOrder(order.id)}>
 
                   {/* Col 1: done circle */}
