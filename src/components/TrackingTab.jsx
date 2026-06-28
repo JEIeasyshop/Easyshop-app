@@ -16,14 +16,18 @@ const PAYMENT_STATES = ['Unpaid', 'Invoiced', 'Paid']
 
 // Inline tracking leg editor
 function TrackingLeg({ label, carrier, number, carriers, onSave }) {
-  const [editing, setEditing] = useState(false)
-  const [num, setNum]         = useState(number || '')
-  const [car, setCar]         = useState(carrier || '')
+  const [editing, setEditing]     = useState(false)
+  const [num, setNum]             = useState(number || '')
+  const [car, setCar]             = useState(carrier || '')
+  const [customCar, setCustomCar] = useState('')
 
-  const save = () => { onSave(car, num); setEditing(false) }
+  const isOther     = car === '__other__'
+  const effectiveCar = isOther ? customCar : car
+
+  const save = () => { onSave(effectiveCar, num); setEditing(false) }
 
   const trackUrl = () => {
-    const c = carriers.find(c => c.name === car)
+    const c = carriers.find(c => c.name === effectiveCar)
     if (!c || !num) return null
     return c.tracking_url_template.replace('{tracking_number}', encodeURIComponent(num))
   }
@@ -34,10 +38,16 @@ function TrackingLeg({ label, carrier, number, carriers, onSave }) {
       <div className="tracking-leg-label">{label}</div>
       {editing ? (
         <div style={{display:'flex', flexDirection:'column', gap:6}}>
-          <select className="form-select" value={car} onChange={e => setCar(e.target.value)}>
+          <select className="form-select" value={car}
+            onChange={e => { setCar(e.target.value); if (e.target.value !== '__other__') setCustomCar('') }}>
             <option value="">— Carrier —</option>
             {carriers.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+            <option value="__other__">Other…</option>
           </select>
+          {isOther && (
+            <input className="form-input" type="text" placeholder="Enter carrier name"
+              value={customCar} onChange={e => setCustomCar(e.target.value)} autoFocus />
+          )}
           <input className="form-input" type="text" placeholder="Tracking number"
             value={num} onChange={e => setNum(e.target.value)} />
           <div className="flex-center gap-6">
@@ -49,7 +59,7 @@ function TrackingLeg({ label, carrier, number, carriers, onSave }) {
         <button className="tracking-leg-add" onClick={() => setEditing(true)}>
           {number ? (
             <span className="flex-center gap-6">
-              {car && <span className="text-muted text-sm">{car}</span>}
+              {carrier && <span className="text-muted text-sm">{carrier}</span>}
               {url
                 ? <a href={url} target="_blank" rel="noreferrer"
                     className="tracking-num flex-center gap-4" onClick={e => e.stopPropagation()}>
@@ -301,25 +311,37 @@ export default function TrackingTab({ orders, tracking, carriers, costs = [], up
                     })}
                   </div>
 
-                  {/* Tracking legs — 3 legs */}
+                  {/* Customer / package info row */}
+                  <div style={{
+                    display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12,
+                    padding:'10px 0', borderBottom:'1px solid var(--gray-100)', marginBottom:10,
+                  }}>
+                    <div>
+                      <div style={{fontSize:10, fontWeight:700, color:'var(--gray-400)', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:3}}>Customer</div>
+                      <div style={{fontSize:14, fontWeight:700, color:'var(--navy)'}}>{order.customer_name || '—'}</div>
+                    </div>
+                    <div>
+                      <div style={{fontSize:10, fontWeight:700, color:'var(--gray-400)', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:3}}>Packages</div>
+                      <div style={{fontSize:14, fontWeight:600}}>{order.number_of_packages != null ? `${order.number_of_packages} pkg` : '—'}</div>
+                    </div>
+                    <div>
+                      <div style={{fontSize:10, fontWeight:700, color:'var(--gray-400)', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:3}}>Weight</div>
+                      <div style={{fontSize:14, fontWeight:600}}>{order.weight_kg != null ? `${order.weight_kg} kg` : '—'}</div>
+                    </div>
+                  </div>
+
+                  {/* Tracking legs — 2 legs (US → Warehouse, ID → Customer) */}
                   <div className="tracking-legs-row">
                     <div className="tracking-legs-label text-sm text-muted">
                       🚚 Tracking
                     </div>
-                    <div className="tracking-legs-grid">
+                    <div className="tracking-legs-grid" style={{gridTemplateColumns:'1fr 1fr'}}>
                       <TrackingLeg
-                        label="US → SG"
+                        label="US → Warehouse"
                         carrier={t.track_us_sg_carrier}
                         number={t.track_us_sg}
                         carriers={carriers}
                         onSave={(car, num) => saveLeg(order.id, 'track_us_sg', 'track_us_sg_carrier', car, num)}
-                      />
-                      <TrackingLeg
-                        label="SG → ID"
-                        carrier={t.track_sg_id_carrier}
-                        number={t.track_sg_id}
-                        carriers={carriers}
-                        onSave={(car, num) => saveLeg(order.id, 'track_sg_id', 'track_sg_id_carrier', car, num)}
                       />
                       <TrackingLeg
                         label="ID → Customer"
