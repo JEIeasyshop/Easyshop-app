@@ -347,7 +347,7 @@ export default function InvoiceTab({
 
                   {/* Col 7: delete */}
                   <div className="flex-center gap-4" onClick={e => e.stopPropagation()}>
-                    <button className="btn-ghost btn-sm" title="Delete order" style={{color:'var(--red)'}}\
+                    <button className="btn-ghost btn-sm" title="Delete order" style={{color:'var(--red)'}}
                       onClick={() => setConfirmDel(order.id)}>
                       <Trash2 size={14} />
                     </button>
