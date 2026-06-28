@@ -287,14 +287,11 @@ export default function InvoiceTab({
             const cstDone  = costRec?.cost_done     || false
 
             return (
-              <div key={order.id}>
-                {/* ── Row — fixed 2-line layout ── */}
-                <div
-                  className={`inv-row ${isSel ? 'inv-row-active' : ''}`}
-                  style={{display:'grid', gridTemplateColumns:'24px minmax(0,1fr) 220px 110px 100px 80px 60px', alignItems:'center', gap:10, padding:'10px 16px', cursor:'pointer'}}
-                  onClick={() => selectOrder(order.id)}>
-
-                  {/* Col 1: done circle */}
+              <div key={order.id}
+                className={`inv-row ${isSel ? 'inv-row-active' : ''}`}
+                onClick={() => selectOrder(order.id)}>
+                {/* Left: checkmark + ORD + name/desc */}
+                <div style={{display:'grid', gridTemplateColumns:'auto auto 1fr', alignItems:'center', gap:10, overflow:'hidden', minWidth:0}}>
                   <div onClick={e => { e.stopPropagation(); handleMarkInvoiceDone(order.id, !invDone) }}
                     style={{
                       width:20, height:20, borderRadius:'50%', flexShrink:0, cursor:'pointer',
@@ -304,27 +301,20 @@ export default function InvoiceTab({
                     }}>
                     {invDone && <Check size={11} color="white" strokeWidth={3} />}
                   </div>
-
-                  {/* Col 2: 2-line name + description */}
-                  <div style={{minWidth:0}}>
-                    <div style={{display:'flex', alignItems:'center', gap:8}}>
-                      <span className="text-mono text-sm fw-700" style={{color:'var(--navy)', whiteSpace:'nowrap', fontSize:11}}>
-                        ORD-{order.id?.substring(0,6).toUpperCase()}
-                      </span>
-                      <span style={{fontWeight:700, fontSize:14, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{order.customer_name}</span>
-                    </div>
-                    <div style={{fontSize:12, color:'var(--gray-400)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', marginTop:1}}>
+                  <span className="text-mono text-sm fw-700" style={{color:'var(--navy)', whiteSpace:'nowrap'}}>
+                    ORD-{order.id?.substring(0,6).toUpperCase()}
+                  </span>
+                  <span style={{overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
+                    <span style={{fontWeight:700}}>{order.customer_name}</span>
+                    <span className="text-muted" style={{fontWeight:400, marginLeft:8, fontSize:13}}>
                       {DIR_LABEL[order.direction] || order.direction_other_note || 'Other'}
                       {order.goods_description ? ` · ${order.goods_description}` : ''}
-                    </div>
-                  </div>
-
-                  {/* Col 3: stage badge — fixed width, no shift */}
-                  <div style={{display:'flex', justifyContent:'flex-end'}}>
-                    {stageBadge(order, tRow)}
-                  </div>
-
-                  {/* Col 4: payment segment */}
+                    </span>
+                  </span>
+                </div>
+                {/* Right: payment seg + amount + 3 bubbles + delete */}
+                <div className="flex-center gap-8" style={{flexShrink:0, marginLeft:12}}>
+                  {stageBadge(order, tRow)}
                   <div className="pay-seg" onClick={e => e.stopPropagation()}>
                     {PAY_STATES.map(p => (
                       <button key={p} className={`pay-seg-btn ${pay === p ? 'pay-seg-active' : ''}`}
@@ -332,213 +322,23 @@ export default function InvoiceTab({
                         onClick={() => handleSetPayment(order.id, p)}>{p}</button>
                     ))}
                   </div>
-
-                  {/* Col 5: amount */}
-                  <div style={{textAlign:'right', fontWeight:700, fontSize:13, whiteSpace:'nowrap', color: isPaid ? 'var(--green)' : 'var(--text)'}}>
+                  <span style={{fontWeight:700, fontSize:14, whiteSpace:'nowrap', color: isPaid ? 'var(--green)' : 'var(--text)'}}>
                     Rp {Math.round(totalIDR).toLocaleString('id-ID')}
-                  </div>
-
-                  {/* Col 6: 3 status dots */}
-                  <div className="flex-center gap-4" title="Shipment · Invoice · Cost" style={{justifyContent:'center'}}>
+                  </span>
+                  {/* 3 status dots — tracking · invoice · cost — far right */}
+                  <div className="flex-center gap-4" title="Shipment · Invoice · Cost">
                     <div style={{width:8, height:8, borderRadius:'50%', background: trkDone ? 'var(--green)' : 'var(--gray-200)'}} />
                     <div style={{width:8, height:8, borderRadius:'50%', background: invDone ? 'var(--green)' : 'var(--gray-200)'}} />
                     <div style={{width:8, height:8, borderRadius:'50%', background: cstDone ? 'var(--green)' : 'var(--gray-200)'}} />
                   </div>
-
-                  {/* Col 7: delete */}
-                  <div className="flex-center gap-4" onClick={e => e.stopPropagation()}>
-                    <button className="btn-ghost btn-sm" title="Delete order" style={{color:'var(--red)'}}\
-                      onClick={() => setConfirmDel(order.id)}>
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
+                  <button className="btn-ghost btn-sm" title="Delete order" style={{color:'var(--red)', flexShrink:0}}
+                    onClick={e => { e.stopPropagation(); setConfirmDel(order.id) }}>
+                    <Trash2 size={14} />
+                  </button>
+                  <span onClick={e => e.stopPropagation()}>
+                    <CompleteButton orderId={order.id} costs={costs} archiveOrder={archiveOrder} />
+                  </span>
                 </div>
-
-                {/* ── Inline expanded invoice panel — appears directly below this row ── */}
-                {isSel && (() => {
-                  const inv2      = selInv
-                  const costRec2  = selCost
-                  const lines2    = buildFeeLines(selected, inv2)
-                  const effU      = parseFloat(usdRate) || inv2?.usd_rate || DEFAULT_FX
-                  const effS      = parseFloat(sgdRate) || inv2?.sgd_rate || DEFAULT_SGD
-                  const totalIDR2 = lines2.reduce((s, l) => s + toIDR(l.amount * (l.qty||1), l.currency, effU, effS), 0)
-                  const pay2      = selTrow?.payment || 'Unpaid'
-                  const isPaid2   = pay2 === 'Paid'
-                  const invDone2  = costRec2?.invoice_done || false
-                  const costDone2 = costRec2?.cost_done || false
-                  const orderLineCount = (
-                    (selected.service_type === 'shipping_only' && selected.computed_base_price != null ? 1 : 0) +
-                    (selected.service_type === 'full_service' && (inv2?.base_price || 0) > 0 ? 1 : 0) +
-                    (selected.additional_costs || []).length
-                  )
-                  return (
-                    <div className="inv-doc" style={{margin:'0 0 4px 0', borderTop:'2px solid var(--gold)', borderRadius:'0 0 var(--r-lg) var(--r-lg)'}}>
-                      {/* Doc header */}
-                      <div className="inv-doc-header">
-                        <div className="flex-center gap-12">
-                          <img src="/logo.png" alt="JEI" style={{width:44, height:44, objectFit:'contain'}} />
-                          <div>
-                            <div style={{fontFamily:'var(--font-brand)', fontWeight:800, fontSize:14, color:'var(--navy)'}}>JEI EASYSHOP</div>
-                            <div className="text-sm text-muted">Freight forwarding · US → SG → ID</div>
-                          </div>
-                        </div>
-                        <div style={{textAlign:'right'}}>
-                          <div style={{fontFamily:'var(--font-brand)', fontWeight:800, fontSize:22, color:'var(--navy)'}}>INVOICE</div>
-                          <div className="text-sm text-muted">INV-{selected.id?.substring(0,6).toUpperCase()}</div>
-                        </div>
-                      </div>
-                      <hr />
-                      {/* Meta */}
-                      <div className="inv-meta-row" style={{gridTemplateColumns:'repeat(5,1fr)'}}>
-                        <div><div className="inv-meta-label">BILL TO</div><div className="inv-meta-value">{selected.customer_name}</div></div>
-                        <div><div className="inv-meta-label">DIRECTION</div><div className="inv-meta-value">{DIR_LABEL[selected.direction] || selected.direction_other_note || 'Other'}</div></div>
-                        <div><div className="inv-meta-label">TRACKING STAGE</div><div style={{marginTop:4}}>{stageBadge(selected, selTrow)}</div></div>
-                        <div>
-                          <div className="inv-meta-label">PAYMENT</div>
-                          <div className="pay-seg" style={{marginTop:4}}>
-                            {PAY_STATES.map(p => (
-                              <button key={p} className={`pay-seg-btn ${pay2 === p ? 'pay-seg-active' : ''}`}
-                                disabled={savingPay === selected.id}
-                                onClick={() => handleSetPayment(selected.id, p)}>{p}</button>
-                            ))}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="inv-meta-label">INVOICE DONE</div>
-                          <div style={{marginTop:6}}>
-                            <div onClick={() => handleMarkInvoiceDone(selected.id, !invDone2)}
-                              style={{
-                                width:28, height:28, borderRadius:'50%', cursor:'pointer',
-                                border:`2px solid ${invDone2 ? 'var(--green)' : 'var(--gray-200)'}`,
-                                background: invDone2 ? 'var(--green)' : 'transparent',
-                                display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.15s',
-                              }}>
-                              {invDone2 && <Check size={14} color="white" strokeWidth={3} />}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <hr />
-                      {/* Fee lines */}
-                      <table style={{width:'100%', borderCollapse:'collapse', marginBottom:16}}>
-                        <thead>
-                          <tr>
-                            {['Description','Qty','Unit Price','Total','In IDR',''].map((h, hi) => (
-                              <th key={hi} style={{
-                                textAlign: hi === 0 ? 'left' : 'right', padding:'8px 0', fontSize:11,
-                                color:'var(--gray-400)', textTransform:'uppercase', letterSpacing:'0.07em',
-                                borderBottom:'1px solid var(--gray-200)', width: h === '' ? 28 : undefined,
-                              }}>{h}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {lines2.length === 0 ? (
-                            <tr><td colSpan={6} style={{padding:'12px 0', color:'var(--gray-400)', fontSize:13}}>No pricing set — add a cost line below.</td></tr>
-                          ) : lines2.map((l, i) => {
-                            const lineTotal   = l.amount * (l.qty || 1)
-                            const isDeletable = i >= orderLineCount
-                            return (
-                              <tr key={i}>
-                                <td style={{padding:'10px 0', fontSize:13, borderBottom:'1px solid var(--gray-100)'}}>{l.label}</td>
-                                <td style={{textAlign:'right', padding:'10px 0', fontSize:13, color:'var(--gray-400)', borderBottom:'1px solid var(--gray-100)'}}>{l.qty||1}</td>
-                                <td style={{textAlign:'right', padding:'10px 0', fontSize:13, borderBottom:'1px solid var(--gray-100)'}}>{formatCurrency(l.amount, l.currency)}</td>
-                                <td style={{textAlign:'right', padding:'10px 0', fontSize:13, fontWeight:600, borderBottom:'1px solid var(--gray-100)'}}>{formatCurrency(lineTotal, l.currency)}</td>
-                                <td style={{textAlign:'right', padding:'10px 0', fontSize:13, fontWeight:700, color:'var(--navy)', borderBottom:'1px solid var(--gray-100)'}}>
-                                  Rp {Math.round(toIDR(lineTotal, l.currency, effU, effS)).toLocaleString('id-ID')}
-                                </td>
-                                <td style={{textAlign:'right', padding:'10px 0', borderBottom:'1px solid var(--gray-100)'}}>
-                                  {isDeletable && removeInvoiceCost && (
-                                    <button className="btn-ghost" style={{color:'var(--red)', padding:'2px 4px'}}
-                                      onClick={() => removeInvoiceCost(selected.id, i - orderLineCount)}>
-                                      <Trash2 size={13} />
-                                    </button>
-                                  )}
-                                </td>
-                              </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
-                      {/* Add cost line */}
-                      <div className="inv-add-cost">
-                        <div className="inv-section-label" style={{marginBottom:10}}>ADD COST LINE</div>
-                        <div style={{display:'grid', gridTemplateColumns:'1fr auto auto auto auto', gap:8, alignItems:'end'}}>
-                          <input className="form-input" type="text" placeholder="Description (e.g. Handling fee)"
-                            value={costDesc} onChange={e => setCostDesc(e.target.value)} />
-                          <div>
-                            <div className="form-label" style={{marginBottom:4}}>Qty</div>
-                            <input className="form-input" style={{width:64}} type="number" min="1"
-                              value={costQty} onChange={e => setCostQty(e.target.value)} />
-                          </div>
-                          <div>
-                            <div className="form-label" style={{marginBottom:4}}>Amount</div>
-                            <input className="form-input" style={{width:100}} type="number" min="0" step="0.01"
-                              placeholder="0.00" value={costAmt} onChange={e => setCostAmt(e.target.value)} />
-                          </div>
-                          <div>
-                            <div className="form-label" style={{marginBottom:4}}>Currency</div>
-                            <select className="form-select" style={{width:80}} value={costCur} onChange={e => setCostCur(e.target.value)}>
-                              <option>IDR</option><option>USD</option>
-                            </select>
-                          </div>
-                          <button className="btn btn-primary btn-sm" disabled={savingCost}
-                            onClick={() => handleAddCost(selected.id)} style={{alignSelf:'end'}}>
-                            <Plus size={13} /> {savingCost ? '…' : 'Add cost'}
-                          </button>
-                        </div>
-                      </div>
-                      {/* FX rates */}
-                      <div className="inv-fx-box">
-                        <div className="inv-section-label">CONVERSION RATES</div>
-                        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr auto', gap:8, marginTop:8, alignItems:'end'}}>
-                          <div>
-                            <div className="form-label" style={{marginBottom:4}}>USD → IDR</div>
-                            <input className="form-input" type="number" placeholder={DEFAULT_FX}
-                              value={usdRate} onChange={e => setUsdRate(e.target.value)} />
-                          </div>
-                          <div>
-                            <div className="form-label" style={{marginBottom:4}}>SGD → IDR</div>
-                            <input className="form-input" type="number" placeholder={DEFAULT_SGD}
-                              value={sgdRate} onChange={e => setSgdRate(e.target.value)} />
-                          </div>
-                          <button className="btn btn-primary btn-sm" disabled={savingRates}
-                            onClick={() => handleSaveRates(selected.id)} style={{alignSelf:'end'}}>
-                            {savingRates ? 'Saving…' : 'Save rates'}
-                          </button>
-                        </div>
-                      </div>
-                      {/* Total + status */}
-                      <div className="cost-total" style={{marginTop:16}}>
-                        <span className="cost-total-label">Total Due (IDR)</span>
-                        <span className="cost-total-value">Rp {Math.round(totalIDR2).toLocaleString('id-ID')}</span>
-                      </div>
-                      <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:12, padding:'12px 16px', background:'var(--gray-50)', borderRadius:'var(--r-md)', border:'1px solid var(--gray-200)'}}>
-                        <div className="flex-center gap-16">
-                          <div className="flex-center gap-8">
-                            <div style={{width:20, height:20, borderRadius:'50%', border:`2px solid ${invDone2 ? 'var(--green)' : 'var(--gray-300)'}`, background: invDone2 ? 'var(--green)' : 'transparent', display:'flex', alignItems:'center', justifyContent:'center'}}>
-                              {invDone2 && <Check size={11} color="white" strokeWidth={3} />}
-                            </div>
-                            <span className="text-sm" style={{color: invDone2 ? 'var(--green)' : 'var(--gray-400)', fontWeight: invDone2 ? 700 : 400}}>Invoice {invDone2 ? 'done ✓' : 'pending'}</span>
-                          </div>
-                          <div className="flex-center gap-8">
-                            <div style={{width:20, height:20, borderRadius:'50%', border:`2px solid ${costDone2 ? 'var(--green)' : 'var(--gray-300)'}`, background: costDone2 ? 'var(--green)' : 'transparent', display:'flex', alignItems:'center', justifyContent:'center'}}>
-                              {costDone2 && <Check size={11} color="white" strokeWidth={3} />}
-                            </div>
-                            <span className="text-sm" style={{color: costDone2 ? 'var(--green)' : 'var(--gray-400)', fontWeight: costDone2 ? 700 : 400}}>Cost {costDone2 ? 'done ✓' : 'pending'}</span>
-                          </div>
-                          {invDone2 && costDone2 && <span className="badge badge-green" style={{fontWeight:700}}>🎉 Will auto-archive</span>}
-                        </div>
-                        <div className="flex-center gap-8">
-                          <button className="btn btn-outline btn-sm" onClick={() => generateInvoicePDF(selected, inv2, lines2)}>
-                            <Printer size={13} /> PDF
-                          </button>
-                          <CompleteButton orderId={selected.id} costs={costs} archiveOrder={archiveOrder} />
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })()}
               </div>
             )
           })}
@@ -547,6 +347,232 @@ export default function InvoiceTab({
           })}
         </div>
 
+        {/* Expanded invoice doc */}
+        {selected && (() => {
+          const inv      = selInv
+          const costRec  = selCost
+          const lines    = buildFeeLines(selected, inv)
+          const effU     = parseFloat(usdRate) || inv?.usd_rate || DEFAULT_FX
+          const effS     = parseFloat(sgdRate) || inv?.sgd_rate || DEFAULT_SGD
+          const totalIDR = lines.reduce((s, l) => s + toIDR(l.amount * (l.qty||1), l.currency, effU, effS), 0)
+          const pay      = selTrow?.payment || 'Unpaid'
+          const isPaid   = pay === 'Paid'
+          const invDone  = costRec?.invoice_done || false
+          const costDone = costRec?.cost_done || false
+          const orderLineCount = (
+            (selected.service_type === 'shipping_only' && selected.computed_base_price != null ? 1 : 0) +
+            (selected.service_type === 'full_service' && (inv?.base_price || 0) > 0 ? 1 : 0) +
+            (selected.additional_costs || []).length
+          )
+
+          return (
+            <div className="inv-doc">
+              {/* Doc header */}
+              <div className="inv-doc-header">
+                <div className="flex-center gap-12">
+                  <img src="/logo.png" alt="JEI" style={{width:44, height:44, objectFit:'contain'}} />
+                  <div>
+                    <div style={{fontFamily:'var(--font-brand)', fontWeight:800, fontSize:14, color:'var(--navy)'}}>JEI EASYSHOP</div>
+                    <div className="text-sm text-muted">Freight forwarding · US → SG → ID</div>
+                  </div>
+                </div>
+                <div style={{textAlign:'right'}}>
+                  <div style={{fontFamily:'var(--font-brand)', fontWeight:800, fontSize:22, color:'var(--navy)'}}>INVOICE</div>
+                  <div className="text-sm text-muted">INV-{selected.id?.substring(0,6).toUpperCase()}</div>
+                </div>
+              </div>
+
+              <hr />
+
+              {/* Meta + tracking stage */}
+              <div className="inv-meta-row" style={{gridTemplateColumns:'repeat(5,1fr)'}}>
+                <div><div className="inv-meta-label">BILL TO</div><div className="inv-meta-value">{selected.customer_name}</div></div>
+                <div><div className="inv-meta-label">DIRECTION</div><div className="inv-meta-value">{DIR_LABEL[selected.direction] || selected.direction_other_note || 'Other'}</div></div>
+                <div><div className="inv-meta-label">TRACKING STAGE</div><div style={{marginTop:4}}>{stageBadge(selected, selTrow)}</div></div>
+                <div>
+                  <div className="inv-meta-label">PAYMENT</div>
+                  <div className="pay-seg" style={{marginTop:4}}>
+                    {PAY_STATES.map(p => (
+                      <button key={p}
+                        className={`pay-seg-btn ${pay === p ? 'pay-seg-active' : ''}`}
+                        disabled={savingPay === selected.id}
+                        onClick={() => handleSetPayment(selected.id, p)}>{p}</button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <div className="inv-meta-label">INVOICE DONE</div>
+                  <div style={{marginTop:6}}>
+                    <div
+                      onClick={() => handleMarkInvoiceDone(selected.id, !invDone)}
+                      style={{
+                        width:28, height:28, borderRadius:'50%', cursor:'pointer',
+                        border:`2px solid ${invDone ? 'var(--green)' : 'var(--gray-200)'}`,
+                        background: invDone ? 'var(--green)' : 'transparent',
+                        display:'flex', alignItems:'center', justifyContent:'center',
+                        transition:'all 0.15s',
+                      }}>
+                      {invDone && <Check size={14} color="white" strokeWidth={3} />}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <hr />
+
+              {/* Fee lines */}
+              <table style={{width:'100%', borderCollapse:'collapse', marginBottom:16}}>
+                <thead>
+                  <tr>
+                    {['Description','Qty','Unit Price','Total','In IDR',''].map((h, hi) => (
+                      <th key={hi} style={{
+                        textAlign: hi === 0 ? 'left' : 'right', padding:'8px 0', fontSize:11,
+                        color:'var(--gray-400)', textTransform:'uppercase', letterSpacing:'0.07em',
+                        borderBottom:'1px solid var(--gray-200)', width: h === '' ? 28 : undefined,
+                      }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines.length === 0 ? (
+                    <tr><td colSpan={6} style={{padding:'12px 0', color:'var(--gray-400)', fontSize:13}}>No pricing set — add a cost line below.</td></tr>
+                  ) : lines.map((l, i) => {
+                    const lineTotal  = l.amount * (l.qty || 1)
+                    const isDeletable = i >= orderLineCount
+                    return (
+                      <tr key={i}>
+                        <td style={{padding:'10px 0', fontSize:13, borderBottom:'1px solid var(--gray-100)'}}>{l.label}</td>
+                        <td style={{textAlign:'right', padding:'10px 0', fontSize:13, color:'var(--gray-400)', borderBottom:'1px solid var(--gray-100)'}}>{l.qty||1}</td>
+                        <td style={{textAlign:'right', padding:'10px 0', fontSize:13, borderBottom:'1px solid var(--gray-100)'}}>{formatCurrency(l.amount, l.currency)}</td>
+                        <td style={{textAlign:'right', padding:'10px 0', fontSize:13, fontWeight:600, borderBottom:'1px solid var(--gray-100)'}}>{formatCurrency(lineTotal, l.currency)}</td>
+                        <td style={{textAlign:'right', padding:'10px 0', fontSize:13, fontWeight:700, color:'var(--navy)', borderBottom:'1px solid var(--gray-100)'}}>
+                          Rp {Math.round(toIDR(lineTotal, l.currency, effU, effS)).toLocaleString('id-ID')}
+                        </td>
+                        <td style={{textAlign:'right', padding:'10px 0', borderBottom:'1px solid var(--gray-100)'}}>
+                          {isDeletable && removeInvoiceCost && (
+                            <button className="btn-ghost" style={{color:'var(--red)', padding:'2px 4px'}}
+                              onClick={() => removeInvoiceCost(selected.id, i - orderLineCount)}>
+                              <Trash2 size={13} />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+
+              {/* Add cost line */}
+              <div className="inv-add-cost">
+                <div className="inv-section-label" style={{marginBottom:10}}>ADD COST LINE</div>
+                <div style={{display:'grid', gridTemplateColumns:'1fr auto auto auto auto', gap:8, alignItems:'end'}}>
+                  <input className="form-input" type="text"
+                    placeholder="Description (e.g. Handling fee)"
+                    value={costDesc} onChange={e => setCostDesc(e.target.value)} />
+                  <div>
+                    <div className="form-label" style={{marginBottom:4}}>Qty</div>
+                    <input className="form-input" style={{width:64}} type="number" min="1"
+                      value={costQty} onChange={e => setCostQty(e.target.value)} />
+                  </div>
+                  <div>
+                    <div className="form-label" style={{marginBottom:4}}>Amount</div>
+                    <input className="form-input" style={{width:100}} type="number" min="0" step="0.01"
+                      placeholder="0.00" value={costAmt} onChange={e => setCostAmt(e.target.value)} />
+                  </div>
+                  <div>
+                    <div className="form-label" style={{marginBottom:4}}>Currency</div>
+                    <select className="form-select" style={{width:80}} value={costCur} onChange={e => setCostCur(e.target.value)}>
+                      <option>IDR</option><option>USD</option>
+                    </select>
+                  </div>
+                  <button className="btn btn-primary btn-sm" disabled={savingCost}
+                    onClick={() => handleAddCost(selected.id)} style={{alignSelf:'end'}}>
+                    <Plus size={13} /> {savingCost ? '…' : 'Add cost'}
+                  </button>
+                </div>
+                {costAmt && parseInt(costQty) > 1 && (
+                  <div className="text-sm text-muted" style={{marginTop:6}}>
+                    = {costQty} × {formatCurrency(parseFloat(costAmt)||0, costCur)} = <strong>{formatCurrency((parseFloat(costAmt)||0)*(parseInt(costQty)||1), costCur)}</strong>
+                  </div>
+                )}
+              </div>
+
+              {/* FX rates */}
+              <div className="inv-fx-box">
+                <div className="inv-section-label">CONVERSION RATES (this invoice only)</div>
+                <div style={{display:'grid', gridTemplateColumns:'1fr 1fr auto', gap:8, marginTop:8, alignItems:'end'}}>
+                  <div>
+                    <div className="form-label" style={{marginBottom:4}}>USD → IDR</div>
+                    <input className="form-input" type="number" placeholder={DEFAULT_FX}
+                      value={usdRate} onChange={e => setUsdRate(e.target.value)} />
+                  </div>
+                  <div>
+                    <div className="form-label" style={{marginBottom:4}}>SGD → IDR</div>
+                    <input className="form-input" type="number" placeholder={DEFAULT_SGD}
+                      value={sgdRate} onChange={e => setSgdRate(e.target.value)} />
+                  </div>
+                  <button className="btn btn-primary btn-sm" disabled={savingRates}
+                    onClick={() => handleSaveRates(selected.id)} style={{alignSelf:'end'}}>
+                    {savingRates ? 'Saving…' : 'Save rates'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Total */}
+              <div className="cost-total" style={{marginTop:16}}>
+                <span className="cost-total-label">Total Due (IDR)</span>
+                <span className="cost-total-value">Rp {Math.round(totalIDR).toLocaleString('id-ID')}</span>
+              </div>
+
+              {/* Status bar at bottom */}
+              <div style={{
+                display:'flex', alignItems:'center', justifyContent:'space-between',
+                marginTop:16, padding:'12px 16px',
+                background:'var(--gray-50)', borderRadius:'var(--r-md)',
+                border:'1px solid var(--gray-200)',
+              }}>
+                <div className="flex-center gap-16">
+                  <div className="flex-center gap-8">
+                    <div style={{
+                      width:20, height:20, borderRadius:'50%',
+                      border:`2px solid ${invDone ? 'var(--green)' : 'var(--gray-300)'}`,
+                      background: invDone ? 'var(--green)' : 'transparent',
+                      display:'flex', alignItems:'center', justifyContent:'center',
+                    }}>
+                      {invDone && <Check size={11} color="white" strokeWidth={3} />}
+                    </div>
+                    <span className="text-sm" style={{color: invDone ? 'var(--green)' : 'var(--gray-400)', fontWeight: invDone ? 700 : 400}}>
+                      Invoice {invDone ? 'done ✓' : 'pending'}
+                    </span>
+                  </div>
+                  <div className="flex-center gap-8">
+                    <div style={{
+                      width:20, height:20, borderRadius:'50%',
+                      border:`2px solid ${costDone ? 'var(--green)' : 'var(--gray-300)'}`,
+                      background: costDone ? 'var(--green)' : 'transparent',
+                      display:'flex', alignItems:'center', justifyContent:'center',
+                    }}>
+                      {costDone && <Check size={11} color="white" strokeWidth={3} />}
+                    </div>
+                    <span className="text-sm" style={{color: costDone ? 'var(--green)' : 'var(--gray-400)', fontWeight: costDone ? 700 : 400}}>
+                      Cost {costDone ? 'done ✓' : 'pending'} (check in Cost tab)
+                    </span>
+                  </div>
+                  {invDone && costDone && (
+                    <span className="badge badge-green" style={{fontWeight:700}}>🎉 Will auto-archive</span>
+                  )}
+                </div>
+                <div className="flex-center gap-8">
+                  <button className="btn btn-outline btn-sm"
+                    onClick={() => generateInvoicePDF(selected, inv, lines)}>
+                    <Printer size={13} /> PDF
+                  </button>
+                  <CompleteButton orderId={selected.id} costs={costs} archiveOrder={archiveOrder} />
+                </div>
+              </div>
+            </div>
+          )
+        })()}
       </>)}
 
       {/* Confirm delete */}

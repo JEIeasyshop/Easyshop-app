@@ -27,7 +27,7 @@ export default function Login({ onLogin }) {
         <div className="login-logo">
           <img src="/logo.png" alt="JEI Logo" className="login-logo-img" />
           <h1>Jon Express <span>International</span></h1>
-          <p>Jastip</p>
+          <p>Freight Management</p>
         </div>
 
         {error && <div className="login-error">{error}</div>}

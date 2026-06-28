@@ -57,7 +57,7 @@ function Dashboard({ session, role }) {
           <img src="/logo.png" alt="JEI" className="header-logo-img" />
           <div className="header-brand-text">
             <h1>Jon Express <span>International</span></h1>
-            <p>Jastip</p>
+            <p>Freight Management</p>
           </div>
         </div>
         <div className="header-right">
