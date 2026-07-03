@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { Package, Truck, FileText, Receipt, Archive, Users, DollarSign } from 'lucide-react'
 import { getSession, onAuthStateChange, signOut, getUserRole } from './lib/auth'
 import { useAppData } from './lib/data'
+import { useKeepAlive, useLiveTicker } from './lib/supabaseClient'
 import Login          from './components/Login'
 import ErrorBoundary  from './components/ErrorBoundary'
 import OrdersTab      from './components/OrdersTab'
@@ -25,6 +26,10 @@ const ALL_TABS = [
 
 function Dashboard({ session, role }) {
   const [tab, setTab] = useState('orders')
+
+  // Keep Supabase alive & live ticker
+  useKeepAlive()
+  const { timeStr, dateStr, orderCount } = useLiveTicker(orders)
 
   const {
     orders, tracking, invoices, completedOrders, carriers, customers, costs,
@@ -61,6 +66,31 @@ function Dashboard({ session, role }) {
           </div>
         </div>
         <div className="header-right">
+          {/* Live activity ticker */}
+          <div style={{
+            display:'flex', alignItems:'center', gap:8,
+            padding:'4px 12px', borderRadius:20,
+            background:'rgba(255,255,255,0.08)',
+            border:'1px solid rgba(255,255,255,0.12)',
+          }}>
+            {/* Pulsing green dot */}
+            <span style={{
+              width:7, height:7, borderRadius:'50%',
+              background:'#4ade80',
+              boxShadow:'0 0 0 0 rgba(74,222,128,0.6)',
+              animation:'pulse-dot 2s infinite',
+              flexShrink:0,
+            }} />
+            <span style={{fontSize:11, color:'rgba(255,255,255,0.55)', fontFamily:'var(--font-mono)', letterSpacing:'0.03em'}}>
+              {dateStr}
+            </span>
+            <span style={{fontSize:12, color:'rgba(255,255,255,0.9)', fontFamily:'var(--font-mono)', fontWeight:600, letterSpacing:'0.05em'}}>
+              {timeStr}
+            </span>
+            <span style={{fontSize:11, color:'rgba(255,255,255,0.45)', marginLeft:2}}>
+              · {orderCount} orders
+            </span>
+          </div>
           <span className="header-user">{session.user.email}</span>
           <span className="header-role">{role}</span>
           <button className="btn-signout" onClick={() => signOut()}>Sign Out</button>
