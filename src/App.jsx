@@ -27,9 +27,8 @@ const ALL_TABS = [
 function Dashboard({ session, role }) {
   const [tab, setTab] = useState('orders')
 
-  // Keep Supabase alive & live ticker
+  // Keep Supabase alive (ping every 4 days)
   useKeepAlive()
-  const { timeStr, dateStr, orderCount } = useLiveTicker(orders)
 
   const {
     orders, tracking, invoices, completedOrders, carriers, customers, costs,
@@ -42,6 +41,9 @@ function Dashboard({ session, role }) {
     revertCompleted, deleteCompleted, cleanupExpired,
     addCustomer, updateCustomer, deleteCustomer,
   } = useAppData()
+
+  // Live ticker — must be after useAppData so orders is defined
+  const { timeStr, dateStr, orderCount } = useLiveTicker(orders || [])
 
   useEffect(() => { cleanupExpired() }, []) // eslint-disable-line
 
