@@ -141,7 +141,57 @@ export function useAppData() {
       .update({ ...updates, updated_at: new Date().toISOString() }).eq('id', id)
     if (error) throw error
     patchOrder(id, updates)
-  }, [patchOrder])
+
+    // ── Cascade revenue to invoices + costs when pricing changes ──
+    // If computed_total changed (i.e. the user edited pricing in the order form),
+    // we must sync the invoice base_price/total and the cost total_revenue.
+    // Without this, Invoice and Cost tabs show stale revenue forever.
+    const newTotal    = updates.computed_total
+    const newCurrency = updates.computed_currency || updates.rate_currency
+    if (newTotal == null) return   // non-pricing edit, nothing to cascade
+
+    // 1. Rebuild invoice with new base price (preserve any existing additional_costs)
+    const existingInvoice = invoices.find(i => i.order_id === id)
+    const additionalCosts = existingInvoice?.additional_costs || []
+    const addOnTotal      = additionalCosts.reduce((s, c) => s + Number(c.amount || 0), 0)
+    const invoiceTotal    = newTotal + addOnTotal
+
+    const invoicePatch = {
+      base_price:       newTotal,
+      total:            invoiceTotal,
+      ...(newCurrency ? { currency: newCurrency } : {}),
+      updated_at:       new Date().toISOString(),
+    }
+
+    const { data: updatedInvoice } = await supabase.from('invoices')
+      .update(invoicePatch)
+      .eq('order_id', id)
+      .select()
+      .single()
+
+    // Optimistic update invoice state
+    patchInvoice(id, invoicePatch)
+
+    // 2. Sync cost row: update order_snapshot + invoice_snapshot + total_revenue
+    const freshOrder   = { ...orders.find(o => o.id === id), ...updates }
+    const freshInvoice = { ...(existingInvoice || {}), ...invoicePatch, ...(updatedInvoice || {}) }
+
+    await supabase.from('costs')
+      .update({
+        order_snapshot:   freshOrder,
+        invoice_snapshot: freshInvoice,
+        total_revenue:    invoiceTotal,
+        updated_at:       new Date().toISOString(),
+      })
+      .eq('original_order_id', id)
+
+    // Optimistic update cost state
+    setCosts(prev => prev.map(c =>
+      c.original_order_id === id
+        ? { ...c, order_snapshot: freshOrder, invoice_snapshot: freshInvoice, total_revenue: invoiceTotal }
+        : c
+    ))
+  }, [patchOrder, patchInvoice, orders, invoices])
 
   // ── TRACKING ─────────────────────────────────────────────
   const updateTracking = useCallback(async (orderId, updates) => {
